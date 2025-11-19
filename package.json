@@ -1,0 +1,53 @@
+{
+  "name": "ai-review-helper",
+  "displayName": "AI Review Helper",
+  "description": "Helps prepare context for LLM code reviews",
+  "version": "0.0.3",
+  "publisher": "myname",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "*"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "ai-review-container",
+          "title": "AI Review",
+          "icon": "$(hubot)"
+        }
+      ]
+    },
+    "views": {
+      "ai-review-container": [
+        {
+          "id": "aiReview.view",
+          "name": "Review Helper",
+          "type": "webview"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "aiReview.focus",
+        "title": "AI Review: Focus Sidebar"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "18.x",
+    "@types/vscode": "^1.80.0",
+    "typescript": "^5.1.3"
+  }
+}

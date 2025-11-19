@@ -1,0 +1,31 @@
+# Compiled output
+out/
+*.js
+*.js.map
+
+# Dependencies
+node_modules/
+
+# VS Code test files
+.vscode-test/
+
+# Package files
+*.vsix
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment variables
+.env
+.env.local
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
