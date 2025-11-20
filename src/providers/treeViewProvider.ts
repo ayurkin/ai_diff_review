@@ -23,34 +23,94 @@ export class TreeViewProvider implements vscode.TreeDataProvider<TreeNode> {
         this._onDidChangeTreeData.fire();
     }
 
-    async selectBranches(): Promise<void> {
-        const branches = await this.gitService.getBranches();
+    async updateConfig(targetBranch?: string, sourceBranch?: string, instruction?: string): Promise<void> {
+        let shouldLoadFiles = false;
 
-        if (branches.length === 0) {
-            vscode.window.showWarningMessage('No git branches found');
-            return;
+        if (targetBranch !== undefined && targetBranch !== this.targetBranch) {
+            this.targetBranch = targetBranch || undefined;
+            shouldLoadFiles = true;
         }
 
-        // Select target branch (base branch)
-        const targetBranch = await vscode.window.showQuickPick(branches, {
-            placeHolder: 'Select target branch (base)',
-            title: 'Target Branch'
-        });
+        if (sourceBranch !== undefined && sourceBranch !== this.sourceBranch) {
+            this.sourceBranch = sourceBranch || undefined;
+            shouldLoadFiles = true;
+        }
 
-        if (!targetBranch) return;
+        if (instruction !== undefined) {
+            this.instruction = instruction;
+        }
 
-        // Select source branch (comparison branch)
-        const sourceBranch = await vscode.window.showQuickPick(branches, {
-            placeHolder: 'Select source branch (compare)',
-            title: 'Source Branch'
-        });
+        // Load files if both branches are set and at least one changed
+        if (shouldLoadFiles && this.targetBranch && this.sourceBranch) {
+            await this.loadFiles();
+        } else {
+            this.refresh();
+        }
+    }
 
-        if (!sourceBranch) return;
+    async selectTargetBranch(): Promise<void> {
+        try {
+            const branches = await this.gitService.getBranches();
 
-        this.targetBranch = targetBranch;
-        this.sourceBranch = sourceBranch;
+            if (branches.length === 0) {
+                vscode.window.showWarningMessage('No git branches found in this repository. Make sure you have committed at least once.');
+                return;
+            }
 
-        await this.loadFiles();
+            const targetBranch = await vscode.window.showQuickPick(branches, {
+                placeHolder: 'Select target branch (base)',
+                title: 'Target Branch'
+            });
+
+            if (!targetBranch) return;
+
+            this.targetBranch = targetBranch;
+            this.refresh();
+
+            // Auto-load if both branches are selected
+            if (this.sourceBranch) {
+                await this.loadFiles();
+            }
+        } catch (error: any) {
+            vscode.window.showErrorMessage(`Failed to get branches: ${error.message || error}`);
+            console.error('selectTargetBranch error:', error);
+        }
+    }
+
+    async selectSourceBranch(): Promise<void> {
+        try {
+            const branches = await this.gitService.getBranches();
+
+            if (branches.length === 0) {
+                vscode.window.showWarningMessage('No git branches found in this repository. Make sure you have committed at least once.');
+                return;
+            }
+
+            const sourceBranch = await vscode.window.showQuickPick(branches, {
+                placeHolder: 'Select source branch (compare)',
+                title: 'Source Branch'
+            });
+
+            if (!sourceBranch) return;
+
+            this.sourceBranch = sourceBranch;
+            this.refresh();
+
+            // Auto-load if both branches are selected
+            if (this.targetBranch) {
+                await this.loadFiles();
+            }
+        } catch (error: any) {
+            vscode.window.showErrorMessage(`Failed to get branches: ${error.message || error}`);
+            console.error('selectSourceBranch error:', error);
+        }
+    }
+
+    async selectBranches(): Promise<void> {
+        await this.selectTargetBranch();
+        if (this.targetBranch) {
+            await this.selectSourceBranch();
+        }
     }
 
     async loadFiles(): Promise<void> {
@@ -113,6 +173,7 @@ export class TreeViewProvider implements vscode.TreeDataProvider<TreeNode> {
 
         if (instruction !== undefined) {
             this.instruction = instruction;
+            this.refresh();
         }
     }
 
@@ -121,13 +182,12 @@ export class TreeViewProvider implements vscode.TreeDataProvider<TreeNode> {
     }
 
     async getChildren(element?: TreeNode): Promise<TreeNode[]> {
-        if (!this.sourceBranch || !this.targetBranch || this.changedFiles.length === 0) {
-            return [];
-        }
-
         if (!element) {
-            // Root level - build tree structure from files
-            return this.buildFileTree();
+            // Root level - return file tree only (config is in separate panel)
+            if (this.sourceBranch && this.targetBranch && this.changedFiles.length > 0) {
+                return this.buildFileTree();
+            }
+            return [];
         }
 
         if (element instanceof FolderNode) {

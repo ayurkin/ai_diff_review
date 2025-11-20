@@ -16,10 +16,12 @@ export class GitService {
                 { cwd: this.workspaceRoot, maxBuffer: 1024 * 1024 * 10 }, // 10MB buffer
                 (err, stdout, stderr) => {
                     if (err) {
-                        // Игнорируем ошибки, если git просто вернул non-zero exit code (например при empty diff),
-                        // но логируем реальные проблемы.
-                        console.warn(`Git command warning: ${stderr}`);
-                        // reject(err); // В MVP лучше не реджектить жестко, а возвращать пустую строку или хендлить выше
+                        const errorMessage = stderr.trim() || err.message || 'Unknown git error';
+                        console.error(`Git command failed: git ${args.join(' ')}`);
+                        console.error(`Error: ${errorMessage}`);
+                        console.error(`Working directory: ${this.workspaceRoot}`);
+                        reject(new Error(errorMessage));
+                        return;
                     }
                     resolve(stdout.trim());
                 }
@@ -40,7 +42,7 @@ export class GitService {
     public async getChangedFiles(targetBranch: string, sourceBranch: string): Promise<ChangedFile[]> {
         try {
             // --name-status показывает статус (M, A, D) и путь
-            const output = await this.exec(['diff', '--name-status', `${targetBranch}...${sourceBranch}`]);
+            const output = await this.exec(['diff', '--name-status', `${targetBranch}..${sourceBranch}`]);
             
             if (!output) return [];
 
@@ -66,7 +68,7 @@ export class GitService {
     public async getFileDiff(targetBranch: string, sourceBranch: string, filePath: string): Promise<string> {
         try {
             // unified diff для конкретного файла
-            return await this.exec(['diff', `${targetBranch}...${sourceBranch}`, '--', filePath]);
+            return await this.exec(['diff', `${targetBranch}..${sourceBranch}`, '--', filePath]);
         } catch (error) {
             console.error(`Failed to get diff for ${filePath}`, error);
             return '';

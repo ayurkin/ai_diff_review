@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { GitService } from './services/gitService';
 import { PromptGenerator } from './services/promptGenerator';
 import { TreeViewProvider } from './providers/treeViewProvider';
+import { ConfigViewProvider } from './providers/configViewProvider';
 import { GitContentProvider } from './providers/gitContentProvider';
 import { ChangedFile } from './types';
 
@@ -14,9 +15,39 @@ export function activate(context: vscode.ExtensionContext) {
 
     console.log(`AI Review: Workspace root: ${workspaceRoot}`);
 
+    if (!workspaceRoot) {
+        vscode.window.showErrorMessage('AI Review: No workspace folder open. Please open a folder to use this extension.');
+        return;
+    }
+
     const gitService = new GitService(workspaceRoot);
     const promptGenerator = new PromptGenerator(gitService);
     const treeViewProvider = new TreeViewProvider(gitService, promptGenerator);
+    const configViewProvider = new ConfigViewProvider(context.extensionUri, gitService);
+
+    // Register config view (webview panel at the top)
+    context.subscriptions.push(
+        vscode.window.registerWebviewViewProvider(
+            ConfigViewProvider.viewType,
+            configViewProvider,
+            {
+                webviewOptions: {
+                    retainContextWhenHidden: true
+                }
+            }
+        )
+    );
+
+    // Listen to config changes and update tree view
+    context.subscriptions.push(
+        configViewProvider.onDidChangeConfig(async (config) => {
+            await treeViewProvider.updateConfig(
+                config.targetBranch,
+                config.sourceBranch,
+                config.instruction
+            );
+        })
+    );
 
     // Create tree view
     const treeView = vscode.window.createTreeView('aiReview.view', {
@@ -32,7 +63,10 @@ export function activate(context: vscode.ExtensionContext) {
         context.subscriptions.push(
             treeView.onDidChangeCheckboxState(async (e) => {
                 for (const [item, state] of e.items) {
-                    await treeViewProvider.handleCheckboxChange(item, state);
+                    // Only handle checkbox changes for TreeNode items (not HeaderNode)
+                    if ('checkboxState' in item) {
+                        await treeViewProvider.handleCheckboxChange(item as any, state);
+                    }
                 }
             })
         );
@@ -42,6 +76,18 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.commands.registerCommand('aiReview.selectBranches', async () => {
             await treeViewProvider.selectBranches();
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('aiReview.selectTargetBranch', async () => {
+            await treeViewProvider.selectTargetBranch();
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('aiReview.selectSourceBranch', async () => {
+            await treeViewProvider.selectSourceBranch();
         })
     );
 

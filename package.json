@@ -27,26 +27,38 @@
     "views": {
       "ai-review-container": [
         {
+          "id": "aiReview.configView",
+          "name": "Configuration",
+          "type": "webview"
+        },
+        {
           "id": "aiReview.view",
-          "name": "Review Helper"
+          "name": "Changed Files"
         }
       ]
     },
     "commands": [
+      {
+        "command": "aiReview.selectTargetBranch",
+        "title": "Select Target Branch"
+      },
+      {
+        "command": "aiReview.selectSourceBranch",
+        "title": "Select Source Branch"
+      },
       {
         "command": "aiReview.selectBranches",
         "title": "Select Branches",
         "icon": "$(git-branch)"
       },
       {
+        "command": "aiReview.setInstruction",
+        "title": "Set Review Instruction"
+      },
+      {
         "command": "aiReview.copyPrompt",
         "title": "Copy Prompt",
         "icon": "$(copy)"
-      },
-      {
-        "command": "aiReview.setInstruction",
-        "title": "Set Review Instruction",
-        "icon": "$(edit)"
       },
       {
         "command": "aiReview.refresh",
@@ -65,24 +77,14 @@
     "menus": {
       "view/title": [
         {
-          "command": "aiReview.selectBranches",
+          "command": "aiReview.copyPrompt",
           "when": "view == aiReview.view",
           "group": "navigation@1"
         },
         {
-          "command": "aiReview.setInstruction",
-          "when": "view == aiReview.view",
-          "group": "navigation@2"
-        },
-        {
-          "command": "aiReview.copyPrompt",
-          "when": "view == aiReview.view",
-          "group": "navigation@3"
-        },
-        {
           "command": "aiReview.refresh",
           "when": "view == aiReview.view",
-          "group": "navigation@4"
+          "group": "navigation@2"
         }
       ]
     }
@@ -90,11 +92,15 @@
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./"
+    "watch": "tsc -watch -p ./",
+    "test": "mocha -r ts-node/register src/**/*.test.ts"
   },
   "devDependencies": {
+    "@types/mocha": "^10.0.10",
     "@types/node": "18.x",
     "@types/vscode": "^1.80.0",
+    "mocha": "^11.7.1",
+    "ts-node": "^10.9.2",
     "typescript": "^5.1.3"
   }
 }
