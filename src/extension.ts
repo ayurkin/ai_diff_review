@@ -93,48 +93,24 @@ export function activate(context: vscode.ExtensionContext) {
 
     // --- Commands ---
 
-    context.subscriptions.push(
-        vscode.commands.registerCommand('aiReview.selectBranches', async () => {
-            await treeViewProvider.selectBranches();
-        })
-    );
+    context.subscriptions.push(vscode.commands.registerCommand('aiReview.selectBranches', () => treeViewProvider.selectBranches()));
+    context.subscriptions.push(vscode.commands.registerCommand('aiReview.selectTargetBranch', () => treeViewProvider.selectTargetBranch()));
+    context.subscriptions.push(vscode.commands.registerCommand('aiReview.selectSourceBranch', () => treeViewProvider.selectSourceBranch()));
+    
+    context.subscriptions.push(vscode.commands.registerCommand('aiReview.changed.selectAll', () => treeViewProvider.setAllChecked(true)));
+    context.subscriptions.push(vscode.commands.registerCommand('aiReview.changed.deselectAll', () => treeViewProvider.setAllChecked(false)));
+    
+    context.subscriptions.push(vscode.commands.registerCommand('aiReview.context.selectAll', () => projectTreeProvider.setAllChecked(true)));
+    context.subscriptions.push(vscode.commands.registerCommand('aiReview.context.deselectAll', () => projectTreeProvider.setAllChecked(false)));
 
-    context.subscriptions.push(
-        vscode.commands.registerCommand('aiReview.selectTargetBranch', async () => {
-            await treeViewProvider.selectTargetBranch();
-        })
-    );
+    // Configuration Commands - Redirect to VS Code Settings UI
+    context.subscriptions.push(vscode.commands.registerCommand('aiReview.context.configure', () => {
+        vscode.commands.executeCommand('workbench.action.openSettings', 'aiReview.ignorePatterns');
+    }));
 
-    context.subscriptions.push(
-        vscode.commands.registerCommand('aiReview.selectSourceBranch', async () => {
-            await treeViewProvider.selectSourceBranch();
-        })
-    );
-
-    // NEW COMMANDS: Select/Deselect All
-    context.subscriptions.push(
-        vscode.commands.registerCommand('aiReview.changed.selectAll', () => {
-            treeViewProvider.setAllChecked(true);
-        })
-    );
-
-    context.subscriptions.push(
-        vscode.commands.registerCommand('aiReview.changed.deselectAll', () => {
-            treeViewProvider.setAllChecked(false);
-        })
-    );
-
-    context.subscriptions.push(
-        vscode.commands.registerCommand('aiReview.context.selectAll', async () => {
-            await projectTreeProvider.setAllChecked(true);
-        })
-    );
-
-    context.subscriptions.push(
-        vscode.commands.registerCommand('aiReview.context.deselectAll', async () => {
-            await projectTreeProvider.setAllChecked(false);
-        })
-    );
+    context.subscriptions.push(vscode.commands.registerCommand('aiReview.changed.configure', () => {
+        vscode.commands.executeCommand('workbench.action.openSettings', 'aiReview.diffIgnorePatterns');
+    }));
 
     context.subscriptions.push(
         vscode.commands.registerCommand('aiReview.copyPrompt', async () => {
@@ -168,11 +144,7 @@ export function activate(context: vscode.ExtensionContext) {
         })
     );
 
-    context.subscriptions.push(
-        vscode.commands.registerCommand('aiReview.setInstruction', async () => {
-            await treeViewProvider.setInstruction();
-        })
-    );
+    context.subscriptions.push(vscode.commands.registerCommand('aiReview.setInstruction', () => treeViewProvider.setInstruction()));
 
     context.subscriptions.push(
         vscode.commands.registerCommand('aiReview.refresh', () => {
@@ -190,15 +162,12 @@ export function activate(context: vscode.ExtensionContext) {
         })
     );
 
-    context.subscriptions.push(
-        vscode.commands.registerCommand('aiReview.focus', () => {
-            vscode.commands.executeCommand('aiReview.view.focus');
-        })
-    );
+    context.subscriptions.push(vscode.commands.registerCommand('aiReview.focus', () => vscode.commands.executeCommand('aiReview.view.focus')));
 
+    // Helper command for backward compatibility
     context.subscriptions.push(
         vscode.commands.registerCommand('aiReview.openSettings', () => {
-            vscode.commands.executeCommand('workbench.action.openSettings', 'aiReview.ignorePatterns');
+             vscode.commands.executeCommand('aiReview.context.configure');
         })
     );
 
