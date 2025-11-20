@@ -14,10 +14,8 @@ export function activate(context: vscode.ExtensionContext) {
         ? vscode.workspace.workspaceFolders[0].uri.fsPath
         : '';
 
-    console.log(`AI Review: Workspace root: ${workspaceRoot}`);
-
     if (!workspaceRoot) {
-        vscode.window.showErrorMessage('AI Review: No workspace folder open. Please open a folder to use this extension.');
+        vscode.window.showErrorMessage('AI Review: No workspace folder open.');
         return;
     }
 
@@ -28,6 +26,7 @@ export function activate(context: vscode.ExtensionContext) {
     const projectTreeProvider = new ProjectTreeProvider(workspaceRoot);
     const configViewProvider = new ConfigViewProvider(context.extensionUri, gitService);
 
+    // Webview Provider
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider(
             ConfigViewProvider.viewType,
@@ -36,6 +35,7 @@ export function activate(context: vscode.ExtensionContext) {
         )
     );
 
+    // Trees
     const treeView = vscode.window.createTreeView('aiReview.view', {
         treeDataProvider: treeViewProvider,
         showCollapseAll: true,
@@ -50,6 +50,7 @@ export function activate(context: vscode.ExtensionContext) {
     });
     context.subscriptions.push(projectTreeView);
 
+    // Events
     context.subscriptions.push(
         configViewProvider.onDidChangeConfig(async (config) => {
             await treeViewProvider.updateConfig(
@@ -67,6 +68,7 @@ export function activate(context: vscode.ExtensionContext) {
         })
     );
 
+    // Checkbox handlers
     if (treeView.onDidChangeCheckboxState) {
         context.subscriptions.push(
             treeView.onDidChangeCheckboxState(async (e) => {
@@ -91,8 +93,7 @@ export function activate(context: vscode.ExtensionContext) {
         );
     }
 
-    // --- Commands ---
-
+    // Commands
     context.subscriptions.push(vscode.commands.registerCommand('aiReview.selectBranches', () => treeViewProvider.selectBranches()));
     context.subscriptions.push(vscode.commands.registerCommand('aiReview.selectTargetBranch', () => treeViewProvider.selectTargetBranch()));
     context.subscriptions.push(vscode.commands.registerCommand('aiReview.selectSourceBranch', () => treeViewProvider.selectSourceBranch()));
@@ -102,15 +103,6 @@ export function activate(context: vscode.ExtensionContext) {
     
     context.subscriptions.push(vscode.commands.registerCommand('aiReview.context.selectAll', () => projectTreeProvider.setAllChecked(true)));
     context.subscriptions.push(vscode.commands.registerCommand('aiReview.context.deselectAll', () => projectTreeProvider.setAllChecked(false)));
-
-    // Configuration Commands - Redirect to VS Code Settings UI
-    context.subscriptions.push(vscode.commands.registerCommand('aiReview.context.configure', () => {
-        vscode.commands.executeCommand('workbench.action.openSettings', 'aiReview.ignorePatterns');
-    }));
-
-    context.subscriptions.push(vscode.commands.registerCommand('aiReview.changed.configure', () => {
-        vscode.commands.executeCommand('workbench.action.openSettings', 'aiReview.diffIgnorePatterns');
-    }));
 
     context.subscriptions.push(
         vscode.commands.registerCommand('aiReview.copyPrompt', async () => {
@@ -164,13 +156,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     context.subscriptions.push(vscode.commands.registerCommand('aiReview.focus', () => vscode.commands.executeCommand('aiReview.view.focus')));
 
-    // Helper command for backward compatibility
-    context.subscriptions.push(
-        vscode.commands.registerCommand('aiReview.openSettings', () => {
-             vscode.commands.executeCommand('aiReview.context.configure');
-        })
-    );
-
+    // Git Provider
     const gitContentProvider = new GitContentProvider(gitService);
     context.subscriptions.push(
         vscode.workspace.registerTextDocumentContentProvider('ai-review', gitContentProvider)

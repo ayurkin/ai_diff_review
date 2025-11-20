@@ -34,21 +34,17 @@ export class ConfigViewProvider implements vscode.WebviewViewProvider {
         // Handle messages from the webview
         webviewView.webview.onDidReceiveMessage(async (data) => {
             switch (data.type) {
-                case 'getBranches': {
-                    try {
-                        const branches = await this.gitService.getBranches();
-                        this._view?.webview.postMessage({ type: 'setBranches', value: branches });
-                    } catch (error: any) {
-                        vscode.window.showErrorMessage(`Failed to get branches: ${error.message || error}`);
-                    }
+                case 'getInitialState': {
+                    this.loadBranches();
+                    this.sendCurrentConfig();
                     break;
                 }
                 case 'configChanged': {
+                    // Handle Branch/Instruction changes
                     this._targetBranch = data.value.targetBranch;
                     this._sourceBranch = data.value.sourceBranch;
                     this._instruction = data.value.instruction;
 
-                    // Notify listeners that config changed
                     this._onDidChangeConfig.fire({
                         targetBranch: this._targetBranch,
                         sourceBranch: this._sourceBranch,
@@ -56,11 +52,14 @@ export class ConfigViewProvider implements vscode.WebviewViewProvider {
                     });
                     break;
                 }
+                case 'savePatterns': {
+                    // Handle Pattern changes (Write to VS Code Settings)
+                    const config = vscode.workspace.getConfiguration('aiReview');
+                    await config.update(data.key, data.value, vscode.ConfigurationTarget.Global);
+                    break;
+                }
             }
         });
-
-        // Load initial branches
-        this.loadBranches();
     }
 
     private async loadBranches() {
@@ -70,6 +69,18 @@ export class ConfigViewProvider implements vscode.WebviewViewProvider {
         } catch (error: any) {
             console.error('Failed to load branches:', error);
         }
+    }
+
+    private sendCurrentConfig() {
+        const config = vscode.workspace.getConfiguration('aiReview');
+        const ignorePatterns = config.get<Record<string, boolean>>('ignorePatterns') || {};
+        const diffIgnorePatterns = config.get<Record<string, boolean>>('diffIgnorePatterns') || {};
+
+        this._view?.webview.postMessage({
+            type: 'setPatterns',
+            ignorePatterns,
+            diffIgnorePatterns
+        });
     }
 
     public getConfig(): ConfigData {
@@ -95,17 +106,18 @@ export class ConfigViewProvider implements vscode.WebviewViewProvider {
                     background-color: var(--vscode-sideBar-background);
                 }
 
+                /* Form Elements */
                 label {
                     display: block;
-                    margin-top: 8px;
+                    margin-top: 12px;
                     margin-bottom: 4px;
                     font-weight: 600;
                     font-size: 11px;
                     text-transform: uppercase;
-                    opacity: 0.8;
+                    opacity: 0.9;
                 }
 
-                select, textarea {
+                select, textarea, input[type="text"] {
                     width: 100%;
                     margin-bottom: 8px;
                     background: var(--vscode-input-background);
@@ -117,123 +129,266 @@ export class ConfigViewProvider implements vscode.WebviewViewProvider {
                     box-sizing: border-box;
                 }
 
-                select {
-                    cursor: pointer;
-                }
-
-                textarea {
-                    resize: vertical;
-                    min-height: 60px;
-                    line-height: 1.4;
-                }
-
-                select:focus, textarea:focus {
+                select:focus, textarea:focus, input[type="text"]:focus {
                     outline: 1px solid var(--vscode-focusBorder);
                     border-color: var(--vscode-focusBorder);
                 }
 
-                .info-text {
-                    font-size: 11px;
-                    opacity: 0.7;
-                    margin-top: -4px;
+                button {
+                    background: var(--vscode-button-background);
+                    color: var(--vscode-button-foreground);
+                    border: none;
+                    padding: 6px 12px;
+                    cursor: pointer;
+                }
+                button:hover {
+                    background: var(--vscode-button-hoverBackground);
+                }
+
+                /* Pattern Lists */
+                .pattern-section {
+                    margin-top: 15px;
+                    border-top: 1px solid var(--vscode-panel-border);
+                    padding-top: 10px;
+                }
+                
+                details {
+                    margin-bottom: 10px;
+                }
+
+                summary {
+                    cursor: pointer;
+                    font-weight: 600;
                     margin-bottom: 8px;
+                    outline: none;
+                }
+
+                .pattern-list {
+                    max-height: 200px;
+                    overflow-y: auto;
+                    border: 1px solid var(--vscode-input-border);
+                    background: var(--vscode-editor-background);
+                    padding: 5px;
+                }
+
+                .pattern-row {
+                    display: flex;
+                    align-items: center;
+                    padding: 4px 0;
+                    border-bottom: 1px solid var(--vscode-panel-border);
+                }
+                .pattern-row:last-child {
+                    border-bottom: none;
+                }
+
+                .pattern-row input[type="checkbox"] {
+                    margin-right: 8px;
+                }
+
+                .pattern-row span {
+                    flex: 1;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                }
+
+                .delete-btn {
+                    background: transparent;
+                    color: var(--vscode-errorForeground);
+                    padding: 2px 6px;
+                    font-size: 12px;
+                    opacity: 0.7;
+                }
+                .delete-btn:hover {
+                    background: var(--vscode-list-hoverBackground);
+                    opacity: 1;
+                }
+
+                .add-row {
+                    display: flex;
+                    margin-top: 8px;
+                    gap: 5px;
+                }
+                .add-row input {
+                    margin-bottom: 0;
                 }
             </style>
         </head>
         <body>
+            <!-- BRANCH CONFIG -->
             <label for="targetBranch">Target Branch (Base)</label>
-            <select id="targetBranch">
-                <option value="">Select branch...</option>
-            </select>
-            <div class="info-text">The base branch to compare against</div>
+            <select id="targetBranch"><option value="">Loading...</option></select>
 
             <label for="sourceBranch">Source Branch (Compare)</label>
-            <select id="sourceBranch">
-                <option value="">Select branch...</option>
-            </select>
-            <div class="info-text">The branch with your changes</div>
+            <select id="sourceBranch"><option value="">Loading...</option></select>
 
             <label for="instruction">Review Instruction</label>
-            <textarea id="instruction" rows="4" placeholder="Enter your review instruction for the LLM...">Review changes.</textarea>
-            <div class="info-text">Instructions for the AI to follow during review</div>
+            <textarea id="instruction" rows="3">Review changes.</textarea>
+
+            <!-- PROJECT FILTERS -->
+            <div class="pattern-section">
+                <details>
+                    <summary>Project Context Filters</summary>
+                    <div class="info-text" style="margin-bottom:5px; font-size:10px; opacity:0.8;">
+                        Files matching checked patterns are <b>hidden</b> from the context tree.
+                    </div>
+                    <div id="ignorePatternsList" class="pattern-list"></div>
+                    <div class="add-row">
+                        <input type="text" id="newIgnorePattern" placeholder="e.g. node_modules">
+                        <button id="addIgnorePattern">Add</button>
+                    </div>
+                </details>
+            </div>
+
+            <!-- DIFF FILTERS -->
+            <div class="pattern-section">
+                <details>
+                    <summary>Diff Ignore Filters</summary>
+                    <div class="info-text" style="margin-bottom:5px; font-size:10px; opacity:0.8;">
+                        Files matching checked patterns are <b>excluded</b> from changes list.
+                    </div>
+                    <div id="diffPatternsList" class="pattern-list"></div>
+                    <div class="add-row">
+                        <input type="text" id="newDiffPattern" placeholder="e.g. *.lock">
+                        <button id="addDiffPattern">Add</button>
+                    </div>
+                </details>
+            </div>
 
             <script>
                 const vscode = acquireVsCodeApi();
 
-                const targetBranchSelect = document.getElementById('targetBranch');
-                const sourceBranchSelect = document.getElementById('sourceBranch');
-                const instructionTextarea = document.getElementById('instruction');
+                // --- Elements ---
+                const els = {
+                    target: document.getElementById('targetBranch'),
+                    source: document.getElementById('sourceBranch'),
+                    instruction: document.getElementById('instruction'),
+                    ignoreList: document.getElementById('ignorePatternsList'),
+                    diffList: document.getElementById('diffPatternsList'),
+                    newIgnore: document.getElementById('newIgnorePattern'),
+                    newDiff: document.getElementById('newDiffPattern'),
+                    addIgnoreBtn: document.getElementById('addIgnorePattern'),
+                    addDiffBtn: document.getElementById('addDiffPattern')
+                };
 
-                // Restore previous state
+                // --- State ---
+                let state = {
+                    targetBranch: '',
+                    sourceBranch: '',
+                    instruction: 'Review changes.',
+                    ignorePatterns: {},
+                    diffIgnorePatterns: {}
+                };
+
+                // Restore State
                 const previousState = vscode.getState();
                 if (previousState) {
-                    if (previousState.targetBranch) targetBranchSelect.value = previousState.targetBranch;
-                    if (previousState.sourceBranch) sourceBranchSelect.value = previousState.sourceBranch;
-                    if (previousState.instruction) instructionTextarea.value = previousState.instruction;
+                    state = { ...state, ...previousState };
+                    updateUI();
                 }
 
-                // Notify extension when config changes
+                // --- Logic: Branches ---
                 function notifyConfigChange() {
-                    const config = {
-                        targetBranch: targetBranchSelect.value || undefined,
-                        sourceBranch: sourceBranchSelect.value || undefined,
-                        instruction: instructionTextarea.value
-                    };
+                    state.targetBranch = els.target.value;
+                    state.sourceBranch = els.source.value;
+                    state.instruction = els.instruction.value;
+                    vscode.setState(state);
+                    vscode.postMessage({ type: 'configChanged', value: state });
+                }
 
-                    // Save state
-                    vscode.setState(config);
+                els.target.addEventListener('change', notifyConfigChange);
+                els.source.addEventListener('change', notifyConfigChange);
+                els.instruction.addEventListener('input', notifyConfigChange);
 
-                    // Notify extension
-                    vscode.postMessage({
-                        type: 'configChanged',
-                        value: config
+                // --- Logic: Patterns ---
+                
+                function renderList(container, patterns, keyName) {
+                    container.innerHTML = '';
+                    Object.keys(patterns).sort().forEach(pattern => {
+                        const div = document.createElement('div');
+                        div.className = 'pattern-row';
+                        
+                        const checkbox = document.createElement('input');
+                        checkbox.type = 'checkbox';
+                        checkbox.checked = patterns[pattern];
+                        checkbox.onchange = () => {
+                            patterns[pattern] = checkbox.checked;
+                            savePatterns(keyName, patterns);
+                        };
+
+                        const span = document.createElement('span');
+                        span.textContent = pattern;
+                        span.title = pattern;
+
+                        const delBtn = document.createElement('button');
+                        delBtn.className = 'delete-btn';
+                        delBtn.textContent = 'x';
+                        delBtn.onclick = () => {
+                            delete patterns[pattern];
+                            savePatterns(keyName, patterns);
+                            renderList(container, patterns, keyName);
+                        };
+
+                        div.appendChild(checkbox);
+                        div.appendChild(span);
+                        div.appendChild(delBtn);
+                        container.appendChild(div);
                     });
                 }
 
-                targetBranchSelect.addEventListener('change', notifyConfigChange);
-                sourceBranchSelect.addEventListener('change', notifyConfigChange);
-                instructionTextarea.addEventListener('input', notifyConfigChange);
+                function savePatterns(key, patterns) {
+                    state[key] = patterns;
+                    vscode.setState(state);
+                    vscode.postMessage({ type: 'savePatterns', key: key, value: patterns });
+                }
 
-                // Request branches on load
-                vscode.postMessage({ type: 'getBranches' });
+                function addPattern(input, container, patterns, keyName) {
+                    const val = input.value.trim();
+                    if (val) {
+                        patterns[val] = true; // Default to checked (hidden)
+                        input.value = '';
+                        savePatterns(keyName, patterns);
+                        renderList(container, patterns, keyName);
+                    }
+                }
 
-                // Listen for messages from extension
+                els.addIgnoreBtn.onclick = () => addPattern(els.newIgnore, els.ignoreList, state.ignorePatterns, 'ignorePatterns');
+                els.addDiffBtn.onclick = () => addPattern(els.newDiff, els.diffList, state.diffIgnorePatterns, 'diffIgnorePatterns');
+
+                // --- Initialization ---
+                
                 window.addEventListener('message', event => {
-                    const message = event.data;
-                    if (message.type === 'setBranches') {
-                        const branches = message.value;
+                    const msg = event.data;
+                    if (msg.type === 'setBranches') {
+                        const branches = msg.value;
+                        const opts = '<option value="">Select...</option>' + 
+                            branches.map(b => '<option value="'+b+'">'+b+'</option>').join('');
+                        
+                        els.target.innerHTML = opts;
+                        els.source.innerHTML = opts;
 
-                        // Store current selections
-                        const currentTarget = targetBranchSelect.value;
-                        const currentSource = sourceBranchSelect.value;
-
-                        // Populate target branch dropdown
-                        targetBranchSelect.innerHTML = '<option value="">Select branch...</option>' +
-                            branches.map(b => '<option value="' + b + '">' + b + '</option>').join('');
-
-                        // Populate source branch dropdown
-                        sourceBranchSelect.innerHTML = '<option value="">Select branch...</option>' +
-                            branches.map(b => '<option value="' + b + '">' + b + '</option>').join('');
-
-                        // Restore selections if they exist
-                        if (currentTarget && branches.includes(currentTarget)) {
-                            targetBranchSelect.value = currentTarget;
-                        } else if (branches.includes('main')) {
-                            targetBranchSelect.value = 'main';
-                        } else if (branches.includes('master')) {
-                            targetBranchSelect.value = 'master';
-                        }
-
-                        if (currentSource && branches.includes(currentSource)) {
-                            sourceBranchSelect.value = currentSource;
-                        }
-
-                        // Trigger change event if values were set
-                        if (targetBranchSelect.value || sourceBranchSelect.value) {
-                            notifyConfigChange();
-                        }
+                        if (state.targetBranch) els.target.value = state.targetBranch;
+                        if (state.sourceBranch) els.source.value = state.sourceBranch;
+                    } 
+                    else if (msg.type === 'setPatterns') {
+                        state.ignorePatterns = msg.ignorePatterns || {};
+                        state.diffIgnorePatterns = msg.diffIgnorePatterns || {};
+                        updateUI();
                     }
                 });
+
+                function updateUI() {
+                    if (state.targetBranch) els.target.value = state.targetBranch;
+                    if (state.sourceBranch) els.source.value = state.sourceBranch;
+                    els.instruction.value = state.instruction;
+                    
+                    renderList(els.ignoreList, state.ignorePatterns, 'ignorePatterns');
+                    renderList(els.diffList, state.diffIgnorePatterns, 'diffIgnorePatterns');
+                }
+
+                // Start
+                vscode.postMessage({ type: 'getInitialState' });
+
             </script>
         </body>
         </html>`;

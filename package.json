@@ -2,7 +2,7 @@
   "name": "ai-review-helper",
   "displayName": "AI Review Helper",
   "description": "Helps prepare context for LLM code reviews",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "publisher": "myname",
   "engines": {
     "vscode": "^1.80.0"
@@ -33,7 +33,7 @@
             ".DS_Store": true,
             "coverage": true
           },
-          "description": "Patterns to hide in Project Context view. Set 'true' to hide, 'false' to show."
+          "description": "Patterns to hide in Project Context view."
         },
         "aiReview.diffIgnorePatterns": {
           "type": "object",
@@ -44,7 +44,7 @@
             "*.pb.ts": true,
             "*.map": true
           },
-          "description": "Patterns to exclude from Changed Files list. Set 'true' to exclude, 'false' to include."
+          "description": "Patterns to exclude from Changed Files list."
         }
       }
     },
@@ -84,9 +84,6 @@
       { "command": "aiReview.openDiff", "title": "Open Diff" },
       { "command": "aiReview.focus", "title": "AI Review: Focus Sidebar" },
       
-      { "command": "aiReview.context.configure", "title": "Configure Filters", "icon": "$(settings-gear)" },
-      { "command": "aiReview.changed.configure", "title": "Configure Filters", "icon": "$(filter)" },
-      
       { "command": "aiReview.changed.selectAll", "title": "Select All", "icon": "$(check-all)" },
       { "command": "aiReview.changed.deselectAll", "title": "Deselect All", "icon": "$(clear-all)" },
       { "command": "aiReview.context.selectAll", "title": "Select All", "icon": "$(check-all)" },
@@ -95,14 +92,12 @@
     "menus": {
       "view/title": [
         { "command": "aiReview.copyPrompt", "when": "view == aiReview.view", "group": "navigation@1" },
-        { "command": "aiReview.changed.configure", "when": "view == aiReview.view", "group": "navigation@2" },
         { "command": "aiReview.changed.selectAll", "when": "view == aiReview.view", "group": "inline@1" },
         { "command": "aiReview.changed.deselectAll", "when": "view == aiReview.view", "group": "inline@2" },
         { "command": "aiReview.refresh", "when": "view == aiReview.view", "group": "navigation@3" },
         
         { "command": "aiReview.context.selectAll", "when": "view == aiReview.contextView", "group": "inline@1" },
         { "command": "aiReview.context.deselectAll", "when": "view == aiReview.contextView", "group": "inline@2" },
-        { "command": "aiReview.context.configure", "when": "view == aiReview.contextView", "group": "navigation@1" },
         { "command": "aiReview.refresh", "when": "view == aiReview.contextView", "group": "navigation@2" }
       ]
     }
