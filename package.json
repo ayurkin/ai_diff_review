@@ -2,7 +2,7 @@
   "name": "ai-review-helper",
   "displayName": "AI Review Helper",
   "description": "Helps prepare context for LLM code reviews",
-  "version": "0.0.4",
+  "version": "0.0.6",
   "publisher": "myname",
   "engines": {
     "vscode": "^1.80.0"
@@ -17,6 +17,23 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "configuration": {
+      "title": "AI Review Helper",
+      "properties": {
+        "aiReview.ignorePatterns": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [ ".git", "node_modules", "out", "dist", "build", ".vscode", ".idea", ".DS_Store", "coverage" ],
+          "description": "Patterns to hide in Project Context view (supports 'node_modules' or '*.log')"
+        },
+        "aiReview.diffIgnorePatterns": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [ "package-lock.json", "yarn.lock", "*.pb.go", "*.pb.ts", "*.map" ],
+          "description": "Patterns to exclude from Changed Files list (supports 'yarn.lock' or '*.pb.go')"
+        }
+      }
+    },
     "viewsContainers": {
       "activitybar": [
         {
@@ -44,69 +61,32 @@
       ]
     },
     "commands": [
-      {
-        "command": "aiReview.selectTargetBranch",
-        "title": "Select Target Branch"
-      },
-      {
-        "command": "aiReview.selectSourceBranch",
-        "title": "Select Source Branch"
-      },
-      {
-        "command": "aiReview.selectBranches",
-        "title": "Select Branches",
-        "icon": "$(git-branch)"
-      },
-      {
-        "command": "aiReview.setInstruction",
-        "title": "Set Review Instruction"
-      },
-      {
-        "command": "aiReview.copyPrompt",
-        "title": "Copy Prompt",
-        "icon": "$(copy)"
-      },
-      {
-        "command": "aiReview.refresh",
-        "title": "Refresh",
-        "icon": "$(refresh)"
-      },
-      {
-        "command": "aiReview.openDiff",
-        "title": "Open Diff"
-      },
-      {
-        "command": "aiReview.focus",
-        "title": "AI Review: Focus Sidebar"
-      }
+      { "command": "aiReview.selectTargetBranch", "title": "Select Target Branch" },
+      { "command": "aiReview.selectSourceBranch", "title": "Select Source Branch" },
+      { "command": "aiReview.selectBranches", "title": "Select Branches", "icon": "$(git-branch)" },
+      { "command": "aiReview.setInstruction", "title": "Set Review Instruction" },
+      { "command": "aiReview.copyPrompt", "title": "Copy Prompt", "icon": "$(copy)" },
+      { "command": "aiReview.refresh", "title": "Refresh", "icon": "$(refresh)" },
+      { "command": "aiReview.openDiff", "title": "Open Diff" },
+      { "command": "aiReview.focus", "title": "AI Review: Focus Sidebar" },
+      { "command": "aiReview.openSettings", "title": "Context Settings", "icon": "$(settings-gear)" },
+      { "command": "aiReview.changed.selectAll", "title": "Select All", "icon": "$(check-all)" },
+      { "command": "aiReview.changed.deselectAll", "title": "Deselect All", "icon": "$(clear-all)" },
+      { "command": "aiReview.context.selectAll", "title": "Select All", "icon": "$(check-all)" },
+      { "command": "aiReview.context.deselectAll", "title": "Deselect All", "icon": "$(clear-all)" }
     ],
     "menus": {
       "view/title": [
-        {
-          "command": "aiReview.copyPrompt",
-          "when": "view == aiReview.view",
-          "group": "navigation@1"
-        },
-        {
-          "command": "aiReview.refresh",
-          "when": "view == aiReview.view",
-          "group": "navigation@2"
-        }
+        { "command": "aiReview.copyPrompt", "when": "view == aiReview.view", "group": "navigation@1" },
+        { "command": "aiReview.changed.selectAll", "when": "view == aiReview.view", "group": "inline@1" },
+        { "command": "aiReview.changed.deselectAll", "when": "view == aiReview.view", "group": "inline@2" },
+        { "command": "aiReview.refresh", "when": "view == aiReview.view", "group": "navigation@2" },
+        
+        { "command": "aiReview.context.selectAll", "when": "view == aiReview.contextView", "group": "inline@1" },
+        { "command": "aiReview.context.deselectAll", "when": "view == aiReview.contextView", "group": "inline@2" },
+        { "command": "aiReview.openSettings", "when": "view == aiReview.contextView", "group": "navigation@1" },
+        { "command": "aiReview.refresh", "when": "view == aiReview.contextView", "group": "navigation@2" }
       ]
     }
-  },
-  "scripts": {
-    "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
-    "test": "mocha -r ts-node/register src/**/*.test.ts"
-  },
-  "devDependencies": {
-    "@types/mocha": "^10.0.10",
-    "@types/node": "18.x",
-    "@types/vscode": "^1.80.0",
-    "mocha": "^11.7.1",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.1.3"
   }
 }

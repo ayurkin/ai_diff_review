@@ -3,34 +3,61 @@ import * as path from 'path';
 import { GitService } from '../services/gitService';
 import { PromptGenerator } from '../services/promptGenerator';
 import { ChangedFile } from '../types';
+import { isMatch } from '../utils/glob';
 
 export class TreeViewProvider implements vscode.TreeDataProvider<TreeNode> {
     private _onDidChangeTreeData = new vscode.EventEmitter<TreeNode | undefined | null | void>();
     readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
-    // Exposed properties for the extension coordinator
     public sourceBranch?: string;
     public targetBranch?: string;
     public instruction: string = 'Review changes.';
     
     private changedFiles: ChangedFile[] = [];
     private checkedFiles = new Map<string, vscode.TreeItemCheckboxState>();
+    private ignorePatterns: string[] = [];
 
     constructor(
         private gitService: GitService,
         private promptGenerator: PromptGenerator
-    ) {}
+    ) {
+        this.loadConfig();
+        vscode.workspace.onDidChangeConfiguration(e => {
+            if (e.affectsConfiguration('aiReview.diffIgnorePatterns')) {
+                this.loadConfig();
+                // Reload files to apply new filter
+                if (this.sourceBranch && this.targetBranch) {
+                    this.loadFiles();
+                }
+            }
+        });
+    }
+
+    private loadConfig() {
+        const config = vscode.workspace.getConfiguration('aiReview');
+        this.ignorePatterns = config.get<string[]>('diffIgnorePatterns') || [];
+    }
 
     refresh(): void {
         this._onDidChangeTreeData.fire();
     }
 
-    // API for ProjectTreeProvider integration
+    /**
+     * Bulk select/deselect action
+     */
+    public setAllChecked(checked: boolean): void {
+        const state = checked ? vscode.TreeItemCheckboxState.Checked : vscode.TreeItemCheckboxState.Unchecked;
+        
+        for (const file of this.changedFiles) {
+            this.checkedFiles.set(file.path, state);
+        }
+        this.refresh();
+    }
+
     public getChangedFiles(): ChangedFile[] {
         return this.changedFiles;
     }
 
-    // API for copyPrompt command
     public getCheckedFiles(): ChangedFile[] {
         return this.changedFiles.filter(f =>
             this.checkedFiles.get(f.path) === vscode.TreeItemCheckboxState.Checked
@@ -66,7 +93,7 @@ export class TreeViewProvider implements vscode.TreeDataProvider<TreeNode> {
             const branches = await this.gitService.getBranches();
 
             if (branches.length === 0) {
-                vscode.window.showWarningMessage('No git branches found. Make sure you have committed at least once.');
+                vscode.window.showWarningMessage('No git branches found.');
                 return;
             }
 
@@ -128,9 +155,13 @@ export class TreeViewProvider implements vscode.TreeDataProvider<TreeNode> {
             return;
         }
 
-        this.changedFiles = await this.gitService.getChangedFiles(this.targetBranch, this.sourceBranch);
+        const allFiles = await this.gitService.getChangedFiles(this.targetBranch, this.sourceBranch);
 
-        // Check all files by default
+        // Filter using Glob Matcher
+        this.changedFiles = allFiles.filter(file => !isMatch(file.path, this.ignorePatterns));
+
+        // Reset checks when loading new files? 
+        // Or keep state? For now, default to checked.
         this.checkedFiles.clear();
         for (const file of this.changedFiles) {
             this.checkedFiles.set(file.path, vscode.TreeItemCheckboxState.Checked);
@@ -139,7 +170,12 @@ export class TreeViewProvider implements vscode.TreeDataProvider<TreeNode> {
         this.refresh();
 
         if (this.changedFiles.length === 0) {
-            vscode.window.showInformationMessage('No changes found between branches');
+            // If we filtered everything out, let the user know
+            if (allFiles.length > 0) {
+                vscode.window.showInformationMessage('Changes found, but all were hidden by your Ignore Patterns.');
+            } else {
+                vscode.window.showInformationMessage('No changes found between branches');
+            }
         }
     }
 
@@ -195,12 +231,10 @@ export class TreeViewProvider implements vscode.TreeDataProvider<TreeNode> {
             }
         }
 
-        // Update folder states based on children
         for (const folder of rootNodes.values()) {
             this.updateFolderCheckboxState(folder);
         }
 
-        // Sort - Explicitly cast label to string to satisfy TypeScript
         return [
             ...Array.from(rootNodes.values()).sort((a, b) => (a.label as string).localeCompare(b.label as string)),
             ...fileNodes.sort((a, b) => (a.label as string).localeCompare(b.label as string))
@@ -248,7 +282,7 @@ export class TreeViewProvider implements vscode.TreeDataProvider<TreeNode> {
         } else if (noneChecked) {
             folder.checkboxState = vscode.TreeItemCheckboxState.Unchecked;
         } else {
-            folder.checkboxState = vscode.TreeItemCheckboxState.Unchecked; 
+            folder.checkboxState = vscode.TreeItemCheckboxState.Unchecked;
         }
     }
 

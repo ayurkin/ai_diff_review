@@ -24,12 +24,10 @@ export function activate(context: vscode.ExtensionContext) {
     const gitService = new GitService(workspaceRoot);
     const promptGenerator = new PromptGenerator(gitService);
     
-    // Providers
     const treeViewProvider = new TreeViewProvider(gitService, promptGenerator);
     const projectTreeProvider = new ProjectTreeProvider(workspaceRoot);
     const configViewProvider = new ConfigViewProvider(context.extensionUri, gitService);
 
-    // 1. Register Config View
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider(
             ConfigViewProvider.viewType,
@@ -38,7 +36,6 @@ export function activate(context: vscode.ExtensionContext) {
         )
     );
 
-    // 2. Register Changed Files View
     const treeView = vscode.window.createTreeView('aiReview.view', {
         treeDataProvider: treeViewProvider,
         showCollapseAll: true,
@@ -46,7 +43,6 @@ export function activate(context: vscode.ExtensionContext) {
     });
     context.subscriptions.push(treeView);
 
-    // 3. Register Project Context View
     const projectTreeView = vscode.window.createTreeView('aiReview.contextView', {
         treeDataProvider: projectTreeProvider,
         showCollapseAll: true,
@@ -54,9 +50,6 @@ export function activate(context: vscode.ExtensionContext) {
     });
     context.subscriptions.push(projectTreeView);
 
-    // --- Event Wiring ---
-
-    // When config changes (branch selection), update main tree
     context.subscriptions.push(
         configViewProvider.onDidChangeConfig(async (config) => {
             await treeViewProvider.updateConfig(
@@ -67,7 +60,6 @@ export function activate(context: vscode.ExtensionContext) {
         })
     );
 
-    // When main tree updates (files loaded), update project tree (to gray out items)
     context.subscriptions.push(
         treeViewProvider.onDidChangeTreeData(() => {
             const changedFiles = treeViewProvider.getChangedFiles();
@@ -75,7 +67,6 @@ export function activate(context: vscode.ExtensionContext) {
         })
     );
 
-    // Handle checkbox changes for Changed Files Tree
     if (treeView.onDidChangeCheckboxState) {
         context.subscriptions.push(
             treeView.onDidChangeCheckboxState(async (e) => {
@@ -88,14 +79,11 @@ export function activate(context: vscode.ExtensionContext) {
         );
     }
 
-    // Handle checkbox changes for Project Context Tree
     if (projectTreeView.onDidChangeCheckboxState) {
         context.subscriptions.push(
             projectTreeView.onDidChangeCheckboxState(async (e) => {
                 for (const [item, state] of e.items) {
                      if (item instanceof ProjectFileNode) {
-                        // We manually toggle state in our provider because we track it simply
-                        // NOTE: VS Code handles the visual toggle, we just need to update our model
                         projectTreeProvider.toggleFile(item);
                      }
                 }
@@ -123,16 +111,38 @@ export function activate(context: vscode.ExtensionContext) {
         })
     );
 
-    // CENTRAL COPY PROMPT LOGIC
+    // NEW COMMANDS: Select/Deselect All
+    context.subscriptions.push(
+        vscode.commands.registerCommand('aiReview.changed.selectAll', () => {
+            treeViewProvider.setAllChecked(true);
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('aiReview.changed.deselectAll', () => {
+            treeViewProvider.setAllChecked(false);
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('aiReview.context.selectAll', async () => {
+            await projectTreeProvider.setAllChecked(true);
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('aiReview.context.deselectAll', async () => {
+            await projectTreeProvider.setAllChecked(false);
+        })
+    );
+
     context.subscriptions.push(
         vscode.commands.registerCommand('aiReview.copyPrompt', async () => {
-            // 1. Validate State
             if (!treeViewProvider.sourceBranch || !treeViewProvider.targetBranch) {
                 vscode.window.showWarningMessage('Please select branches first');
                 return;
             }
 
-            // 2. Gather Data
             const changedFiles = treeViewProvider.getCheckedFiles();
             const contextFiles = projectTreeProvider.getCheckedFiles();
 
@@ -141,7 +151,6 @@ export function activate(context: vscode.ExtensionContext) {
                 return;
             }
 
-            // 3. Generate Prompt
             try {
                 const prompt = await promptGenerator.generate({
                     files: changedFiles,
@@ -187,7 +196,12 @@ export function activate(context: vscode.ExtensionContext) {
         })
     );
 
-    // Register git content provider
+    context.subscriptions.push(
+        vscode.commands.registerCommand('aiReview.openSettings', () => {
+            vscode.commands.executeCommand('workbench.action.openSettings', 'aiReview.ignorePatterns');
+        })
+    );
+
     const gitContentProvider = new GitContentProvider(gitService);
     context.subscriptions.push(
         vscode.workspace.registerTextDocumentContentProvider('ai-review', gitContentProvider)
