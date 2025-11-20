@@ -9,23 +9,20 @@ export class PromptGenerator {
     }
 
     public async generate(config: PromptConfig): Promise<string> {
-        const { files, sourceBranch, targetBranch, instruction } = config;
+        const { files, sourceBranch, targetBranch, instruction, contextFiles } = config;
 
-        // 1. Генерация структуры директорий
-        const dirStructure = this.generateDirectoryStructure(files.map(f => f.path));
+        // 1. Генерация структуры директорий (включаем и измененные, и контекстные файлы)
+        const allPaths = [...files.map(f => f.path), ...(contextFiles || [])];
+        const uniquePaths = Array.from(new Set(allPaths));
+        const dirStructure = this.generateDirectoryStructure(uniquePaths);
 
-        // 2. Сборка контента файлов
+        // 2. Сборка контента измененных файлов (Diff + Content)
         let filesXmlContent = '';
 
         for (const file of files) {
-            // Пропускаем удаленные файлы для полного контента, но дифф можно показать
             const isDeleted = file.status === 'D';
-
             const diff = await this.gitService.getFileDiff(targetBranch, sourceBranch, file.path);
             
-            // Если файл удален, контента в source ветке нет. 
-            // Если добавлен, контент есть.
-            // Если изменен, контент есть.
             let content = '';
             if (!isDeleted) {
                 content = await this.gitService.getFileContent(sourceBranch, file.path);
@@ -41,7 +38,27 @@ ${!isDeleted ? `<content_source_branch>\n${this.escapeXml(content)}\n</content_s
 `;
         }
 
-        // 3. Сборка итогового промпта
+        // 3. Сборка контента контекстных файлов (Только Content)
+        let contextXmlContent = '';
+        if (contextFiles && contextFiles.length > 0) {
+            contextXmlContent = '<supplementary_files>\n';
+            for (const path of contextFiles) {
+                // Берем контент из sourceBranch, так как ревьюим его состояние
+                const content = await this.gitService.getFileContent(sourceBranch, path);
+                if (content) {
+                    contextXmlContent += `
+<file path="${path}">
+<content>
+${this.escapeXml(content)}
+</content>
+</file>
+`;
+                }
+            }
+            contextXmlContent += '</supplementary_files>';
+        }
+
+        // 4. Сборка итогового промпта
         return `
 <instructions>
 ${instruction}
@@ -55,6 +72,7 @@ ${instruction}
     <directory_structure>
 ${dirStructure}
     </directory_structure>
+    ${contextXmlContent}
 </context>
 
 <files>
@@ -64,18 +82,10 @@ ${filesXmlContent}
     }
 
     private generateDirectoryStructure(paths: string[]): string {
-        // Простая визуализация дерева. 
-        // Для MVP можно просто вывести список путей, но дерево лучше для понимания контекста.
-        // Тут упрощенная версия - просто отсортированный список с отступами эмулировать сложно без построения дерева.
-        // Для надежности пока вернем просто список, чтобы не загромождать код, 
-        // но в идеале тут алгоритм построения ASCII tree.
         return paths.sort().map(p => `    ${p}`).join('\n');
     }
 
     private escapeXml(unsafe: string): string {
-        // Базовая защита, чтобы не сломать XML структуру, если в коде есть теги
-        // Можно использовать CDATA, но LLM иногда путаются в CDATA внутри Markdown блоков.
-        // Простая замена символов надежнее.
         return unsafe
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')

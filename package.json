@@ -2,7 +2,7 @@
   "name": "ai-review-helper",
   "displayName": "AI Review Helper",
   "description": "Helps prepare context for LLM code reviews",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "publisher": "myname",
   "engines": {
     "vscode": "^1.80.0"
@@ -11,7 +11,9 @@
     "Other"
   ],
   "activationEvents": [
-    "*"
+    "onView:aiReview.view",
+    "onView:aiReview.contextView",
+    "onView:aiReview.configView"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -34,6 +36,10 @@
         {
           "id": "aiReview.view",
           "name": "Changed Files"
+        },
+        {
+          "id": "aiReview.contextView",
+          "name": "Project Context"
         }
       ]
     },

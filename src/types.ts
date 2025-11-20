@@ -11,5 +11,6 @@ export interface PromptConfig {
     sourceBranch: string;
     targetBranch: string;
     instruction: string; // Пользовательский промпт
-    files: ChangedFile[]; // Отфильтрованный список файлов для ревью
+    files: ChangedFile[]; // Отфильтрованный список файлов для ревью (diffs)
+    contextFiles?: string[]; // Список дополнительных файлов (только контент)
 }

@@ -8,11 +8,13 @@ export class TreeViewProvider implements vscode.TreeDataProvider<TreeNode> {
     private _onDidChangeTreeData = new vscode.EventEmitter<TreeNode | undefined | null | void>();
     readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
-    private sourceBranch?: string;
-    private targetBranch?: string;
+    // Exposed properties for the extension coordinator
+    public sourceBranch?: string;
+    public targetBranch?: string;
+    public instruction: string = 'Review changes.';
+    
     private changedFiles: ChangedFile[] = [];
     private checkedFiles = new Map<string, vscode.TreeItemCheckboxState>();
-    private instruction: string = 'Review changes.';
 
     constructor(
         private gitService: GitService,
@@ -21,6 +23,18 @@ export class TreeViewProvider implements vscode.TreeDataProvider<TreeNode> {
 
     refresh(): void {
         this._onDidChangeTreeData.fire();
+    }
+
+    // API for ProjectTreeProvider integration
+    public getChangedFiles(): ChangedFile[] {
+        return this.changedFiles;
+    }
+
+    // API for copyPrompt command
+    public getCheckedFiles(): ChangedFile[] {
+        return this.changedFiles.filter(f =>
+            this.checkedFiles.get(f.path) === vscode.TreeItemCheckboxState.Checked
+        );
     }
 
     async updateConfig(targetBranch?: string, sourceBranch?: string, instruction?: string): Promise<void> {
@@ -40,7 +54,6 @@ export class TreeViewProvider implements vscode.TreeDataProvider<TreeNode> {
             this.instruction = instruction;
         }
 
-        // Load files if both branches are set and at least one changed
         if (shouldLoadFiles && this.targetBranch && this.sourceBranch) {
             await this.loadFiles();
         } else {
@@ -53,7 +66,7 @@ export class TreeViewProvider implements vscode.TreeDataProvider<TreeNode> {
             const branches = await this.gitService.getBranches();
 
             if (branches.length === 0) {
-                vscode.window.showWarningMessage('No git branches found in this repository. Make sure you have committed at least once.');
+                vscode.window.showWarningMessage('No git branches found. Make sure you have committed at least once.');
                 return;
             }
 
@@ -67,13 +80,11 @@ export class TreeViewProvider implements vscode.TreeDataProvider<TreeNode> {
             this.targetBranch = targetBranch;
             this.refresh();
 
-            // Auto-load if both branches are selected
             if (this.sourceBranch) {
                 await this.loadFiles();
             }
         } catch (error: any) {
             vscode.window.showErrorMessage(`Failed to get branches: ${error.message || error}`);
-            console.error('selectTargetBranch error:', error);
         }
     }
 
@@ -82,7 +93,7 @@ export class TreeViewProvider implements vscode.TreeDataProvider<TreeNode> {
             const branches = await this.gitService.getBranches();
 
             if (branches.length === 0) {
-                vscode.window.showWarningMessage('No git branches found in this repository. Make sure you have committed at least once.');
+                vscode.window.showWarningMessage('No git branches found.');
                 return;
             }
 
@@ -96,13 +107,11 @@ export class TreeViewProvider implements vscode.TreeDataProvider<TreeNode> {
             this.sourceBranch = sourceBranch;
             this.refresh();
 
-            // Auto-load if both branches are selected
             if (this.targetBranch) {
                 await this.loadFiles();
             }
         } catch (error: any) {
             vscode.window.showErrorMessage(`Failed to get branches: ${error.message || error}`);
-            console.error('selectSourceBranch error:', error);
         }
     }
 
@@ -134,36 +143,6 @@ export class TreeViewProvider implements vscode.TreeDataProvider<TreeNode> {
         }
     }
 
-    async copyPrompt(): Promise<void> {
-        if (!this.sourceBranch || !this.targetBranch) {
-            vscode.window.showWarningMessage('Please select branches first');
-            return;
-        }
-
-        const selectedFiles = this.changedFiles.filter(f =>
-            this.checkedFiles.get(f.path) === vscode.TreeItemCheckboxState.Checked
-        );
-
-        if (selectedFiles.length === 0) {
-            vscode.window.showWarningMessage('No files selected for review');
-            return;
-        }
-
-        try {
-            const prompt = await this.promptGenerator.generate({
-                files: selectedFiles,
-                sourceBranch: this.sourceBranch,
-                targetBranch: this.targetBranch,
-                instruction: this.instruction
-            });
-
-            await vscode.env.clipboard.writeText(prompt);
-            vscode.window.showInformationMessage(`Prompt copied! (${selectedFiles.length} files)`);
-        } catch (e: any) {
-            vscode.window.showErrorMessage('Error: ' + e.message);
-        }
-    }
-
     async setInstruction(): Promise<void> {
         const instruction = await vscode.window.showInputBox({
             prompt: 'Enter review instruction',
@@ -183,7 +162,6 @@ export class TreeViewProvider implements vscode.TreeDataProvider<TreeNode> {
 
     async getChildren(element?: TreeNode): Promise<TreeNode[]> {
         if (!element) {
-            // Root level - return file tree only (config is in separate panel)
             if (this.sourceBranch && this.targetBranch && this.changedFiles.length > 0) {
                 return this.buildFileTree();
             }
@@ -191,7 +169,6 @@ export class TreeViewProvider implements vscode.TreeDataProvider<TreeNode> {
         }
 
         if (element instanceof FolderNode) {
-            // Return children of a folder
             return element.children;
         }
 
@@ -206,51 +183,35 @@ export class TreeViewProvider implements vscode.TreeDataProvider<TreeNode> {
             const parts = file.path.split('/');
 
             if (parts.length === 1) {
-                // File at root level
                 const checkboxState = this.checkedFiles.get(file.path) ?? vscode.TreeItemCheckboxState.Unchecked;
                 fileNodes.push(new FileNode(file, this.sourceBranch!, this.targetBranch!, checkboxState));
             } else {
-                // File in a folder
                 const topLevelFolder = parts[0];
-
                 if (!rootNodes.has(topLevelFolder)) {
                     rootNodes.set(topLevelFolder, new FolderNode(topLevelFolder, []));
                 }
-
                 const folderNode = rootNodes.get(topLevelFolder)!;
                 this.addFileToFolder(folderNode, parts.slice(1), file, parts[0]);
             }
         }
 
-        // Update folder checkbox states
+        // Update folder states based on children
         for (const folder of rootNodes.values()) {
             this.updateFolderCheckboxState(folder);
         }
 
-        // Combine and sort: folders first, then files
-        const result: TreeNode[] = [
-            ...Array.from(rootNodes.values()).sort((a, b) => {
-                const labelA = a.label && typeof a.label === 'string' ? a.label : '';
-                const labelB = b.label && typeof b.label === 'string' ? b.label : '';
-                return labelA.localeCompare(labelB);
-            }),
-            ...fileNodes.sort((a, b) => {
-                const labelA = a.label && typeof a.label === 'string' ? a.label : '';
-                const labelB = b.label && typeof b.label === 'string' ? b.label : '';
-                return labelA.localeCompare(labelB);
-            })
+        // Sort - Explicitly cast label to string to satisfy TypeScript
+        return [
+            ...Array.from(rootNodes.values()).sort((a, b) => (a.label as string).localeCompare(b.label as string)),
+            ...fileNodes.sort((a, b) => (a.label as string).localeCompare(b.label as string))
         ];
-
-        return result;
     }
 
     private addFileToFolder(folderNode: FolderNode, pathParts: string[], file: ChangedFile, fullFolderPath: string): void {
         if (pathParts.length === 1) {
-            // This is the file - add it to this folder
             const checkboxState = this.checkedFiles.get(file.path) ?? vscode.TreeItemCheckboxState.Unchecked;
             folderNode.children.push(new FileNode(file, this.sourceBranch!, this.targetBranch!, checkboxState));
         } else {
-            // Navigate deeper into folder structure
             const nextFolder = pathParts[0];
             const nextFolderPath = fullFolderPath + '/' + nextFolder;
 
@@ -275,7 +236,6 @@ export class TreeViewProvider implements vscode.TreeDataProvider<TreeNode> {
             if (child instanceof FolderNode) {
                 this.updateFolderCheckboxState(child);
             }
-
             if (child.checkboxState === vscode.TreeItemCheckboxState.Checked) {
                 noneChecked = false;
             } else {
@@ -288,28 +248,23 @@ export class TreeViewProvider implements vscode.TreeDataProvider<TreeNode> {
         } else if (noneChecked) {
             folder.checkboxState = vscode.TreeItemCheckboxState.Unchecked;
         } else {
-            folder.checkboxState = vscode.TreeItemCheckboxState.Unchecked;
+            folder.checkboxState = vscode.TreeItemCheckboxState.Unchecked; 
         }
     }
 
     async handleCheckboxChange(node: TreeNode, state: vscode.TreeItemCheckboxState): Promise<void> {
         node.checkboxState = state;
-
         if (node instanceof FileNode) {
-            // Update the file's checkbox state
             this.checkedFiles.set(node.file.path, state);
         } else if (node instanceof FolderNode) {
-            // Update all children recursively
             this.updateFolderChildren(node, state);
         }
-
         this.refresh();
     }
 
     private updateFolderChildren(folder: FolderNode, state: vscode.TreeItemCheckboxState): void {
         for (const child of folder.children) {
             child.checkboxState = state;
-
             if (child instanceof FileNode) {
                 this.checkedFiles.set(child.file.path, state);
             } else if (child instanceof FolderNode) {
@@ -317,52 +272,34 @@ export class TreeViewProvider implements vscode.TreeDataProvider<TreeNode> {
             }
         }
     }
-
-    getBranchInfo(): string {
-        if (!this.sourceBranch || !this.targetBranch) {
-            return 'No branches selected';
-        }
-        return `${this.targetBranch} ← ${this.sourceBranch}`;
-    }
 }
 
-// Base class for tree nodes
 abstract class TreeNode extends vscode.TreeItem {
     abstract checkboxState: vscode.TreeItemCheckboxState;
 }
 
-// Folder node in the tree
 class FolderNode extends TreeNode {
     checkboxState: vscode.TreeItemCheckboxState;
-
-    constructor(
-        public readonly label: string,
-        public children: TreeNode[]
-    ) {
+    constructor(public readonly label: string, public children: TreeNode[]) {
         super(label, vscode.TreeItemCollapsibleState.Expanded);
         this.iconPath = new vscode.ThemeIcon('folder');
         this.checkboxState = vscode.TreeItemCheckboxState.Unchecked;
     }
 }
 
-// File node in the tree
 class FileNode extends TreeNode {
     checkboxState: vscode.TreeItemCheckboxState;
-
     constructor(
         public readonly file: ChangedFile,
-        private sourceBranch: string,
-        private targetBranch: string,
+        sourceBranch: string,
+        targetBranch: string,
         checkboxState: vscode.TreeItemCheckboxState
     ) {
         super(path.basename(file.path), vscode.TreeItemCollapsibleState.None);
-
         this.iconPath = new vscode.ThemeIcon('file');
         this.checkboxState = checkboxState;
         this.description = this.getStatusLabel(file.status);
         this.tooltip = file.path;
-
-        // Command to open diff when clicked
         this.command = {
             command: 'aiReview.openDiff',
             title: 'Open Diff',
