@@ -89,12 +89,13 @@ export class ConfigViewProvider implements vscode.WebviewViewProvider {
     }
 
     private _getHtmlForWebview(webview: vscode.Webview) {
-        // Refined icons to match VS Code Codicons (thinner, cleaner)
+        // Exact VS Code icons
         const icons = {
-            chevronRight: `<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor"><path fill-rule="evenodd" clip-rule="evenodd" d="M10.072 8.024L5.715 3.667l.618-.62L11 7.716v.618L6.333 13l-.618-.619 4.357-4.357z"/></svg>`,
-            chevronDown: `<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor"><path fill-rule="evenodd" clip-rule="evenodd" d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z"/></svg>`,
-            check: `<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor"><path fill-rule="evenodd" clip-rule="evenodd" d="M14.431 3.323l-8.47 10-.79-.036-3.35-4.77.818-.574 2.978 4.24 8.051-9.506.764.646z"/></svg>`,
-            close: `<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor"><path fill-rule="evenodd" clip-rule="evenodd" d="M8 8.707l3.646 3.647.708-.707L8.707 8l3.647-3.646-.707-.708L8 7.293 4.354 3.646l-.707.708L7.293 8l-3.646 3.646.707.708L8 8.707z"/></svg>`,
+            chevronRight: `<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor"><path d="M6.19 4.21l4.42 4.11-4.37 4.36-.73-.68 3.65-3.64L5.42 4.86l.77-.65z"/></svg>`,
+            chevronDown: `<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor"><path d="M4.21 6.19l4.11 4.42 4.36-4.37-.68-.73-3.64 3.65-3.68-3.71-.65.77z"/></svg>`,
+            // The native checkmark path
+            check: `<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor"><path d="M14.431 3.323l-8.47 10-.79-.036-3.35-4.77.818-.574 2.978 4.24 8.051-9.506.764.646z"/></svg>`,
+            close: `<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor"><path d="M8 7.293l3.646-3.647.708.708L8.707 8l3.647 3.646-.708.708L8 8.707l-3.646 3.647-.708-.708L7.293 8 3.646 4.354l.708-.708L8 7.293z"/></svg>`,
             add: `<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor"><path d="M14 7v1H9v5H8V8H3V7h5V2h1v5h5z"/></svg>`
         };
 
@@ -105,15 +106,22 @@ export class ConfigViewProvider implements vscode.WebviewViewProvider {
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <style>
                 :root {
-                    /* Variables for native feel */
                     --header-bg: var(--vscode-sideBarSectionHeader-background);
                     --header-fg: var(--vscode-sideBarSectionHeader-foreground);
                     --header-border: var(--vscode-sideBarSectionHeader-border, transparent);
+                    
                     --list-hover: var(--vscode-list-hoverBackground);
                     --list-text: var(--vscode-sideBar-foreground);
+                    
                     --input-bg: var(--vscode-input-background);
                     --input-fg: var(--vscode-input-foreground);
                     --input-border: var(--vscode-input-border);
+                    
+                    --checkbox-bg: var(--vscode-checkbox-background);
+                    --checkbox-fg: var(--vscode-checkbox-foreground);
+                    --checkbox-border: var(--vscode-checkbox-border);
+                    
+                    --focus-border: var(--vscode-focusBorder);
                 }
 
                 body {
@@ -126,7 +134,7 @@ export class ConfigViewProvider implements vscode.WebviewViewProvider {
                     overflow-x: hidden;
                 }
 
-                /* 1. FORM SECTION */
+                /* FORM SECTION */
                 .form-container {
                     padding: 10px 20px 15px 20px;
                 }
@@ -156,11 +164,11 @@ export class ConfigViewProvider implements vscode.WebviewViewProvider {
                 }
 
                 select:focus, textarea:focus {
-                    outline: 1px solid var(--vscode-focusBorder);
-                    border-color: var(--vscode-focusBorder);
+                    outline: 1px solid var(--focus-border);
+                    border-color: var(--focus-border);
                 }
 
-                /* 2. HEADERS (Native Style) */
+                /* HEADERS */
                 details {
                     width: 100%;
                 }
@@ -172,61 +180,68 @@ export class ConfigViewProvider implements vscode.WebviewViewProvider {
                     align-items: center;
                     background-color: var(--header-bg);
                     color: var(--header-fg);
-                    padding: 3px 0px; /* Reduced padding to match sidebar tree headers */
+                    padding: 3px 0px;
                     font-weight: 700;
                     font-size: 11px;
                     text-transform: uppercase;
-                    outline: none;
+                    outline: 1px solid transparent; /* Focus placeholder */
+                    outline-offset: -1px;
                     border-top: 1px solid var(--header-border);
                     height: 22px;
                     box-sizing: border-box;
+                }
+                
+                details > summary:focus {
+                    outline-color: var(--focus-border);
                 }
                 
                 details > summary::-webkit-details-marker { display: none; }
 
                 .chevron-icon {
                     width: 16px;
+                    height: 16px;
                     display: flex;
                     justify-content: center;
                     align-items: center;
-                    margin-right: 4px;
+                    margin-right: 2px;
                 }
                 
                 details[open] .chevron-right { display: none; }
                 details:not([open]) .chevron-down { display: none; }
 
-                /* 3. LIST ITEMS (Tree Style) */
+                /* LIST ITEMS */
                 .list-wrapper {
                     padding: 0;
-                    margin-bottom: 10px;
+                    margin: 0;
                 }
 
                 .list-item {
                     display: flex;
                     align-items: center;
-                    height: 22px; /* Fixed tree row height */
+                    height: 22px;
                     padding-left: 20px;
                     padding-right: 6px;
                     cursor: pointer;
                     color: var(--list-text);
                     font-size: 13px;
-                    position: relative; /* For absolute positioning actions */
-                    border: 1px solid transparent; /* Maintain box model consistency */
-                    border-width: 1px 0; /* Only top/bottom so width doesn't jump */
+                    position: relative;
+                    border: 1px solid transparent;
+                    border-width: 1px 0;
                 }
 
                 .list-item:hover {
                     background-color: var(--list-hover);
                 }
 
-                /* CHECKBOX (Native Style) */
+                /* CHECKBOX STYLING */
                 .custom-checkbox {
                     appearance: none;
-                    width: 13px;
-                    height: 13px;
-                    border: 1px solid var(--vscode-checkbox-border);
-                    background-color: var(--vscode-checkbox-background);
-                    border-radius: 2px; /* Slightly rounded */
+                    -webkit-appearance: none;
+                    width: 16px;
+                    height: 16px;
+                    border: 1px solid var(--checkbox-border);
+                    background-color: var(--checkbox-bg);
+                    border-radius: 3px;
                     margin: 0 6px 0 0;
                     position: relative;
                     cursor: pointer;
@@ -234,21 +249,39 @@ export class ConfigViewProvider implements vscode.WebviewViewProvider {
                     align-items: center;
                     justify-content: center;
                     flex-shrink: 0;
+                    outline: none;
                 }
 
+                /* Focus State - Use VS Code standard */
+                .custom-checkbox:focus {
+                    outline: 1px solid var(--focus-border);
+                    outline-offset: -1px;
+                    border-color: var(--focus-border);
+                }
+
+                /* Checked State */
                 .custom-checkbox:checked {
-                    background-color: var(--vscode-checkbox-background);
-                    border-color: var(--vscode-focusBorder);
+                    background-color: var(--checkbox-bg);
+                    border-color: var(--checkbox-border);
+                    /* In some themes selected background changes, but sidebar checkbox usually keeps bg */
+                }
+                
+                .custom-checkbox:checked:focus {
+                    border-color: var(--focus-border);
                 }
 
+                /* Checkmark Icon */
                 .custom-checkbox::after {
                     content: '';
-                    width: 11px;
-                    height: 11px;
+                    width: 16px;
+                    height: 16px;
                     display: none;
-                    background-color: var(--vscode-checkbox-foreground);
+                    background-color: var(--checkbox-fg);
                     mask: url('data:image/svg+xml;utf8,${encodeURIComponent(icons.check)}') no-repeat center;
                     -webkit-mask: url('data:image/svg+xml;utf8,${encodeURIComponent(icons.check)}') no-repeat center;
+                    /* Ensure icon is scaled correctly within box */
+                    mask-size: 11px; 
+                    -webkit-mask-size: 11px;
                 }
 
                 .custom-checkbox:checked::after {
@@ -262,7 +295,7 @@ export class ConfigViewProvider implements vscode.WebviewViewProvider {
                     white-space: nowrap;
                 }
 
-                /* ACTIONS (Absolute to prevent jumping) */
+                /* ACTIONS */
                 .item-actions {
                     display: none;
                     position: absolute;
@@ -285,23 +318,27 @@ export class ConfigViewProvider implements vscode.WebviewViewProvider {
                     align-items: center;
                     justify-content: center;
                     border-radius: 3px;
+                    outline: none;
+                }
+                button.icon-btn:focus {
+                    outline: 1px solid var(--focus-border);
+                    outline-offset: -1px;
                 }
                 button.icon-btn:hover {
                     background-color: var(--vscode-toolbar-hoverBackground);
                 }
 
-                /* ADD ROW */
+                /* ADD INPUT ROW */
                 .add-row {
                     display: flex;
-                    height: 26px;
+                    height: 24px;
                     padding: 0 20px;
                     align-items: center;
-                    margin-top: 2px;
                 }
                 
                 .add-row input {
                     flex: 1;
-                    height: 24px;
+                    height: 22px;
                     background: transparent;
                     border: 1px solid transparent;
                     color: var(--vscode-inputPlaceholder-foreground);
@@ -312,7 +349,7 @@ export class ConfigViewProvider implements vscode.WebviewViewProvider {
                 
                 .add-row input:focus {
                     background-color: var(--input-bg);
-                    border-color: var(--vscode-focusBorder);
+                    border-color: var(--focus-border);
                     color: var(--input-fg);
                 }
                 
@@ -320,24 +357,18 @@ export class ConfigViewProvider implements vscode.WebviewViewProvider {
                     color: var(--vscode-disabledForeground);
                     font-style: italic;
                 }
-
             </style>
         </head>
         <body>
-            
-            <!-- CONFIG FORM -->
             <div class="form-container">
                 <span class="section-label">Target Branch</span>
                 <select id="targetBranch"><option>Loading...</option></select>
-
                 <span class="section-label">Source Branch</span>
                 <select id="sourceBranch"><option>Loading...</option></select>
-
                 <span class="section-label">Review Instruction</span>
                 <textarea id="instruction" rows="3" placeholder="Enter instructions..."></textarea>
             </div>
 
-            <!-- CONTEXT IGNORE LIST -->
             <details>
                 <summary>
                     <div class="chevron-icon">
@@ -355,7 +386,6 @@ export class ConfigViewProvider implements vscode.WebviewViewProvider {
                 </div>
             </details>
 
-            <!-- DIFF IGNORE LIST -->
             <details>
                 <summary>
                     <div class="chevron-icon">
@@ -395,19 +425,15 @@ export class ConfigViewProvider implements vscode.WebviewViewProvider {
                     diffIgnorePatterns: {}
                 };
 
-                // --- STATE RESTORE ---
                 const prevState = vscode.getState();
                 if (prevState) {
                     state = { ...state, ...prevState };
                     render();
                 }
 
-                // --- UI LOGIC for Inputs ---
-                // Only show Add button when typing
                 els.newIgnore.oninput = (e) => els.addIgnoreBtn.style.visibility = e.target.value ? 'visible' : 'hidden';
                 els.newDiff.oninput = (e) => els.addDiffBtn.style.visibility = e.target.value ? 'visible' : 'hidden';
 
-                // --- EVENTS ---
                 function saveState() {
                     vscode.setState(state);
                 }
@@ -424,7 +450,6 @@ export class ConfigViewProvider implements vscode.WebviewViewProvider {
                 els.source.onchange = notifyConfig;
                 els.instruction.oninput = notifyConfig;
 
-                // --- LIST LOGIC ---
                 function togglePattern(keyName, pattern, checked) {
                     state[keyName][pattern] = checked;
                     saveState();
@@ -441,7 +466,7 @@ export class ConfigViewProvider implements vscode.WebviewViewProvider {
                 function addPattern(keyName, inputEl, btnEl) {
                     const val = inputEl.value.trim();
                     if (val) {
-                        state[keyName][val] = true; // Default checked
+                        state[keyName][val] = true; 
                         inputEl.value = '';
                         btnEl.style.visibility = 'hidden';
                         saveState();
@@ -452,11 +477,9 @@ export class ConfigViewProvider implements vscode.WebviewViewProvider {
 
                 els.addIgnoreBtn.onclick = () => addPattern('ignorePatterns', els.newIgnore, els.addIgnoreBtn);
                 els.addDiffBtn.onclick = () => addPattern('diffIgnorePatterns', els.newDiff, els.addDiffBtn);
-                
                 els.newIgnore.onkeydown = (e) => { if(e.key === 'Enter') addPattern('ignorePatterns', els.newIgnore, els.addIgnoreBtn); };
                 els.newDiff.onkeydown = (e) => { if(e.key === 'Enter') addPattern('diffIgnorePatterns', els.newDiff, els.addDiffBtn); };
 
-                // --- RENDERING ---
                 function renderList(container, patterns, keyName) {
                     container.innerHTML = '';
                     const sortedKeys = Object.keys(patterns).sort();
@@ -465,21 +488,18 @@ export class ConfigViewProvider implements vscode.WebviewViewProvider {
                         const row = document.createElement('div');
                         row.className = 'list-item';
                         
-                        // Checkbox
                         const checkbox = document.createElement('input');
                         checkbox.type = 'checkbox';
                         checkbox.className = 'custom-checkbox';
                         checkbox.checked = patterns[key];
                         checkbox.onchange = (e) => togglePattern(keyName, key, e.target.checked);
 
-                        // Label
                         const label = document.createElement('span');
                         label.className = 'item-label';
                         label.textContent = key;
                         label.title = key;
                         label.onclick = () => { checkbox.click(); };
 
-                        // Actions (Absolute Positioned)
                         const actions = document.createElement('div');
                         actions.className = 'item-actions';
                         const delBtn = document.createElement('button');
@@ -511,7 +531,6 @@ export class ConfigViewProvider implements vscode.WebviewViewProvider {
                     renderLists();
                 }
 
-                // --- MESSAGE HANDLING ---
                 window.addEventListener('message', event => {
                     const msg = event.data;
                     if (msg.type === 'setBranches') {
