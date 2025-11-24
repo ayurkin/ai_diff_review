@@ -97,15 +97,39 @@ export class ProjectTreeProvider implements vscode.TreeDataProvider<ProjectNode>
         return Array.from(this.checkedFiles);
     }
 
-    public toggleFile(node: ProjectNode): void {
-        if (this.checkedFiles.has(node.relativePath)) {
-            this.checkedFiles.delete(node.relativePath);
-            node.checkboxState = vscode.TreeItemCheckboxState.Unchecked;
-        } else {
-            this.checkedFiles.add(node.relativePath);
-            node.checkboxState = vscode.TreeItemCheckboxState.Checked;
+    public async handleCheckboxChanges(items: ReadonlyArray<[ProjectNode, vscode.TreeItemCheckboxState]>): Promise<void> {
+        const folderItems: Array<[ProjectFolderNode, vscode.TreeItemCheckboxState]> = [];
+
+        for (const [item, state] of items) {
+            if (item instanceof ProjectFileNode && item.checkboxState !== undefined) {
+                this.setFileCheckbox(item, state);
+            } else if (item instanceof ProjectFolderNode) {
+                folderItems.push([item, state]);
+            }
         }
+
+        for (const [folder, state] of folderItems) {
+            folder.checkboxState = state;
+            const files = await this.walkDirectory(folder.fullPath);
+            const eligible = files.filter(f => !this.changedFilesSet.has(f));
+
+            if (state === vscode.TreeItemCheckboxState.Checked) {
+                eligible.forEach(f => this.checkedFiles.add(f));
+            } else {
+                eligible.forEach(f => this.checkedFiles.delete(f));
+            }
+        }
+
         this.refresh();
+    }
+
+    private setFileCheckbox(node: ProjectFileNode, state: vscode.TreeItemCheckboxState): void {
+        node.checkboxState = state;
+        if (state === vscode.TreeItemCheckboxState.Checked) {
+            this.checkedFiles.add(node.relativePath);
+        } else {
+            this.checkedFiles.delete(node.relativePath);
+        }
     }
 
     getTreeItem(element: ProjectNode): vscode.TreeItem {
@@ -134,11 +158,13 @@ export class ProjectTreeProvider implements vscode.TreeDataProvider<ProjectNode>
                 
                 const isChangedFile = this.changedFilesSet.has(relativePath);
 
-                if (dirent.isDirectory()) {
+                if (dirent.isDirectory()) {                    
+                    const state = await this.computeFolderCheckboxState(relativePath);
                     nodes.push(new ProjectFolderNode(
                         dirent.name,
                         fullPath,
-                        relativePath
+                        relativePath,
+                        state
                     ));
                 } else {
                     let state: vscode.TreeItemCheckboxState | undefined;
@@ -172,6 +198,20 @@ export class ProjectTreeProvider implements vscode.TreeDataProvider<ProjectNode>
             return [];
         }
     }
+
+    private async computeFolderCheckboxState(relativePath: string): Promise<vscode.TreeItemCheckboxState> {
+        const files = await this.walkDirectory(path.join(this.workspaceRoot, relativePath));
+        const eligible = files.filter(f => !this.changedFilesSet.has(f));
+
+        if (eligible.length === 0) {
+            return vscode.TreeItemCheckboxState.Unchecked;
+        }
+
+        const checkedCount = eligible.filter(f => this.checkedFiles.has(f)).length;
+        return checkedCount === eligible.length
+            ? vscode.TreeItemCheckboxState.Checked
+            : vscode.TreeItemCheckboxState.Unchecked;
+    }
 }
 
 export abstract class ProjectNode extends vscode.TreeItem {
@@ -186,7 +226,7 @@ export abstract class ProjectNode extends vscode.TreeItem {
 }
 
 export class ProjectFolderNode extends ProjectNode {
-    constructor(label: string, fullPath: string, relativePath: string) {
+    constructor(label: string, fullPath: string, relativePath: string, public checkboxState: vscode.TreeItemCheckboxState) {
         super(label, fullPath, relativePath, vscode.TreeItemCollapsibleState.Collapsed);
         this.iconPath = new vscode.ThemeIcon('folder');
     }

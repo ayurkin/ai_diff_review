@@ -80,11 +80,7 @@ export function activate(context: vscode.ExtensionContext) {
     if (projectTreeView.onDidChangeCheckboxState) {
         context.subscriptions.push(
             projectTreeView.onDidChangeCheckboxState(async (e) => {
-                for (const [item, state] of e.items) {
-                     if (item instanceof ProjectFileNode) {
-                        projectTreeProvider.toggleFile(item);
-                     }
-                }
+                await projectTreeProvider.handleCheckboxChanges(e.items as any);
             })
         );
     }
