@@ -1,19 +1,23 @@
+import { minimatch } from 'minimatch';
+
 /**
- * Simple glob matcher.
- * Supports:
- * - Exact matches: "node_modules"
- * - Extension matches: "*.js"
- * - Ends with: "lock"
+ * Determine whether the file path matches any configured ignore pattern.
+ * Uses minimatch so that users can supply familiar glob syntax.
  */
 export function isMatch(filePath: string, patterns: string[]): boolean {
-    return patterns.some(pattern => {
-        // Handle wildcard extensions (e.g. *.log)
-        if (pattern.startsWith('*.')) {
-            const ext = pattern.slice(1); // .log
-            return filePath.endsWith(ext);
+    const normalizedPath = filePath.replace(/\\/g, '/');
+
+    return patterns.some(rawPattern => {
+        const pattern = rawPattern.trim();
+        if (!pattern) return false;
+
+        // matchBase=true lets bare filenames like "package-lock.json" match anywhere.
+        if (minimatch(normalizedPath, pattern, { matchBase: true, dot: true })) {
+            return true;
         }
-        
-        // Handle directory/path matches
-        return filePath.includes(pattern) || filePath === pattern;
+
+        // Fallback: treat plain directory names as segment matches (e.g., "out").
+        const segments = normalizedPath.split('/');
+        return segments.includes(pattern);
     });
 }

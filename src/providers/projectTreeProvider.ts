@@ -71,10 +71,9 @@ export class ProjectTreeProvider implements vscode.TreeDataProvider<ProjectNode>
         try {
             const list = await fs.promises.readdir(dir, { withFileTypes: true });
             for (const dirent of list) {
-                if (isMatch(dirent.name, this.activeIgnorePatterns)) continue;
-
                 const fullPath = path.join(dir, dirent.name);
                 const relativePath = path.relative(this.workspaceRoot, fullPath).replace(/\\/g, '/');
+                if (isMatch(relativePath, this.activeIgnorePatterns)) continue;
 
                 if (dirent.isDirectory()) {
                     const subFiles = await this.walkDirectory(fullPath);
@@ -126,12 +125,12 @@ export class ProjectTreeProvider implements vscode.TreeDataProvider<ProjectNode>
             const nodes: ProjectNode[] = [];
 
             for (const dirent of dirents) {
-                if (isMatch(dirent.name, this.activeIgnorePatterns)) {
-                    continue;
-                }
-
                 const fullPath = path.join(folderPath, dirent.name);
                 const relativePath = path.relative(this.workspaceRoot, fullPath).replace(/\\/g, '/');
+                
+                if (isMatch(relativePath, this.activeIgnorePatterns)) {
+                    continue;
+                }
                 
                 const isChangedFile = this.changedFilesSet.has(relativePath);
 
