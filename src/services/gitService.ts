@@ -9,6 +9,10 @@ export class GitService {
         this.workspaceRoot = workspaceRoot;
     }
 
+    public getWorkspaceRoot(): string {
+        return this.workspaceRoot;
+    }
+
     private async exec(args: string[]): Promise<string> {
         return new Promise((resolve, reject) => {
             cp.exec(

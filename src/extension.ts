@@ -50,6 +50,16 @@ export function activate(context: vscode.ExtensionContext) {
     });
     context.subscriptions.push(projectTreeView);
 
+    const updateSelectionSummary = async () => {
+        const changedTokens = treeViewProvider.getSelectedTokenTotal();
+        const contextTokens = await projectTreeProvider.getSelectedTokenTotal();
+        configViewProvider.updateSelectionSummary(changedTokens + contextTokens);
+    };
+
+    treeViewProvider.onDidUpdateSelection(() => { void updateSelectionSummary(); }, null, context.subscriptions);
+    projectTreeProvider.onDidUpdateSelection(() => { void updateSelectionSummary(); }, null, context.subscriptions);
+    void updateSelectionSummary();
+
     // Events
     context.subscriptions.push(
         configViewProvider.onDidChangeConfig(async (config) => {

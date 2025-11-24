@@ -4,10 +4,13 @@ import { GitService } from '../services/gitService';
 import { PromptGenerator } from '../services/promptGenerator';
 import { ChangedFile } from '../types';
 import { isMatch } from '../utils/glob';
+import { TokenEstimator, formatTokens } from '../utils/tokenEstimator';
 
 export class TreeViewProvider implements vscode.TreeDataProvider<TreeNode> {
     private _onDidChangeTreeData = new vscode.EventEmitter<TreeNode | undefined | null | void>();
     readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
+    private _onDidUpdateSelection = new vscode.EventEmitter<void>();
+    readonly onDidUpdateSelection = this._onDidUpdateSelection.event;
 
     public sourceBranch?: string;
     public targetBranch?: string;
@@ -16,11 +19,15 @@ export class TreeViewProvider implements vscode.TreeDataProvider<TreeNode> {
     private changedFiles: ChangedFile[] = [];
     private checkedFiles = new Map<string, vscode.TreeItemCheckboxState>();
     private activeIgnorePatterns: string[] = [];
+    private fileTokenCounts = new Map<string, number>();
+    private tokenEstimator = new TokenEstimator();
+    private workspaceRoot: string;
 
     constructor(
         private gitService: GitService,
         private promptGenerator: PromptGenerator
     ) {
+        this.workspaceRoot = gitService.getWorkspaceRoot();
         this.loadConfig();
         vscode.workspace.onDidChangeConfiguration(e => {
             if (e.affectsConfiguration('aiReview.diffIgnorePatterns')) {
@@ -61,6 +68,7 @@ export class TreeViewProvider implements vscode.TreeDataProvider<TreeNode> {
             this.checkedFiles.set(file.path, state);
         }
         this.refresh();
+        this._onDidUpdateSelection.fire();
     }
 
     public getChangedFiles(): ChangedFile[] {
@@ -162,7 +170,10 @@ export class TreeViewProvider implements vscode.TreeDataProvider<TreeNode> {
             this.checkedFiles.set(file.path, vscode.TreeItemCheckboxState.Checked);
         }
 
+        await this.populateTokenCounts();
+
         this.refresh();
+        this._onDidUpdateSelection.fire();
 
         if (this.changedFiles.length === 0 && allFiles.length > 0) {
             vscode.window.showInformationMessage('Changes found, but all were hidden by your Ignore Patterns.');
@@ -209,7 +220,13 @@ export class TreeViewProvider implements vscode.TreeDataProvider<TreeNode> {
             const parts = file.path.split('/');
             if (parts.length === 1) {
                 const checkboxState = this.checkedFiles.get(file.path) ?? vscode.TreeItemCheckboxState.Unchecked;
-                fileNodes.push(new FileNode(file, this.sourceBranch!, this.targetBranch!, checkboxState));
+                fileNodes.push(new FileNode(
+                    file,
+                    this.sourceBranch!,
+                    this.targetBranch!,
+                    checkboxState,
+                    this.fileTokenCounts.get(file.path) ?? 0
+                ));
             } else {
                 const topLevelFolder = parts[0];
                 if (!rootNodes.has(topLevelFolder)) {
@@ -221,7 +238,7 @@ export class TreeViewProvider implements vscode.TreeDataProvider<TreeNode> {
         }
 
         for (const folder of rootNodes.values()) {
-            this.updateFolderCheckboxState(folder);
+            this.updateFolderMetadata(folder);
         }
 
         return [
@@ -233,7 +250,13 @@ export class TreeViewProvider implements vscode.TreeDataProvider<TreeNode> {
     private addFileToFolder(folderNode: FolderNode, pathParts: string[], file: ChangedFile, fullFolderPath: string): void {
         if (pathParts.length === 1) {
             const checkboxState = this.checkedFiles.get(file.path) ?? vscode.TreeItemCheckboxState.Unchecked;
-            folderNode.children.push(new FileNode(file, this.sourceBranch!, this.targetBranch!, checkboxState));
+            folderNode.children.push(new FileNode(
+                file,
+                this.sourceBranch!,
+                this.targetBranch!,
+                checkboxState,
+                this.fileTokenCounts.get(file.path) ?? 0
+            ));
         } else {
             const nextFolder = pathParts[0];
             const nextFolderPath = fullFolderPath + '/' + nextFolder;
@@ -250,20 +273,25 @@ export class TreeViewProvider implements vscode.TreeDataProvider<TreeNode> {
         }
     }
 
-    private updateFolderCheckboxState(folder: FolderNode): void {
+    private updateFolderMetadata(folder: FolderNode): void {
         let allChecked = true;
         let noneChecked = true;
+        let tokenTotal = 0;
 
         for (const child of folder.children) {
             if (child instanceof FolderNode) {
-                this.updateFolderCheckboxState(child);
+                this.updateFolderMetadata(child);
             }
             if (child.checkboxState === vscode.TreeItemCheckboxState.Checked) {
                 noneChecked = false;
             } else {
                 allChecked = false;
             }
+            tokenTotal += child.tokenCount ?? 0;
         }
+
+        folder.tokenCount = tokenTotal;
+        folder.description = formatTokens(tokenTotal);
 
         if (allChecked && folder.children.length > 0) {
             folder.checkboxState = vscode.TreeItemCheckboxState.Checked;
@@ -304,6 +332,7 @@ export class TreeViewProvider implements vscode.TreeDataProvider<TreeNode> {
         }
 
         this.refresh();
+        this._onDidUpdateSelection.fire();
     }
 
     private updateFolderChildren(folder: FolderNode, state: vscode.TreeItemCheckboxState): void {
@@ -316,10 +345,39 @@ export class TreeViewProvider implements vscode.TreeDataProvider<TreeNode> {
             }
         }
     }
+
+    public getSelectedTokenTotal(): number {
+        const checked = this.getCheckedFiles();
+        return checked.reduce((sum, file) => {
+            const tokens = this.fileTokenCounts.get(file.path);
+            return sum + (tokens ?? 0);
+        }, 0);
+    }
+
+    private async populateTokenCounts(): Promise<void> {
+        const tasks = this.changedFiles.map(async (file) => {
+            const absolutePath = path.join(this.workspaceRoot, file.path);
+            const fallback = this.getGitFallbackForFile(file);
+            const tokens = await this.tokenEstimator.estimateFromFile(absolutePath, fallback);
+            this.fileTokenCounts.set(file.path, tokens);
+        });
+        await Promise.all(tasks);
+    }
+
+    private getGitFallbackForFile(file: ChangedFile): (() => Promise<string>) | undefined {
+        if (file.status === 'D' && this.targetBranch) {
+            return () => this.gitService.getFileContent(this.targetBranch!, file.path);
+        }
+        if (this.sourceBranch) {
+            return () => this.gitService.getFileContent(this.sourceBranch!, file.path);
+        }
+        return undefined;
+    }
 }
 
 abstract class TreeNode extends vscode.TreeItem {
     abstract checkboxState: vscode.TreeItemCheckboxState;
+    tokenCount?: number;
 }
 
 class FolderNode extends TreeNode {
@@ -333,16 +391,19 @@ class FolderNode extends TreeNode {
 
 class FileNode extends TreeNode {
     checkboxState: vscode.TreeItemCheckboxState;
+    tokenCount: number;
     constructor(
         public readonly file: ChangedFile,
         sourceBranch: string,
         targetBranch: string,
-        checkboxState: vscode.TreeItemCheckboxState
+        checkboxState: vscode.TreeItemCheckboxState,
+        tokenCount: number
     ) {
         super(path.basename(file.path), vscode.TreeItemCollapsibleState.None);
         this.iconPath = new vscode.ThemeIcon('file');
         this.checkboxState = checkboxState;
-        this.description = this.getStatusLabel(file.status);
+        this.tokenCount = tokenCount;
+        this.description = `${this.getStatusLabel(file.status)} · ${formatTokens(tokenCount)}`;
         this.tooltip = file.path;
         this.command = {
             command: 'aiReview.openDiff',

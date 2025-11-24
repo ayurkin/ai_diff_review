@@ -8,6 +8,7 @@ export class ConfigViewProvider implements vscode.WebviewViewProvider {
     private _targetBranch?: string;
     private _sourceBranch?: string;
     private _instruction: string = 'Review changes.';
+    private _pendingSelectionTotal: number = 0;
 
     private _onDidChangeConfig = new vscode.EventEmitter<ConfigData>();
     readonly onDidChangeConfig = this._onDidChangeConfig.event;
@@ -57,12 +58,15 @@ export class ConfigViewProvider implements vscode.WebviewViewProvider {
                 }
             }
         });
+
+        this.pushSelectionSummary();
     }
 
     private async loadBranches() {
         try {
             const branches = await this.gitService.getBranches();
             this._view?.webview.postMessage({ type: 'setBranches', value: branches });
+            this.pushSelectionSummary();
         } catch (error: any) {
             console.error('Failed to load branches:', error);
         }
@@ -86,6 +90,17 @@ export class ConfigViewProvider implements vscode.WebviewViewProvider {
             sourceBranch: this._sourceBranch,
             instruction: this._instruction
         };
+    }
+
+    public updateSelectionSummary(totalTokens: number) {
+        this._pendingSelectionTotal = totalTokens;
+        this.pushSelectionSummary();
+    }
+
+    private pushSelectionSummary() {
+        if (this._view) {
+            this._view.webview.postMessage({ type: 'selectionSummary', totalTokens: this._pendingSelectionTotal });
+        }
     }
 
     private _getHtmlForWebview(webview: vscode.Webview) {
@@ -357,6 +372,12 @@ export class ConfigViewProvider implements vscode.WebviewViewProvider {
                     color: var(--vscode-disabledForeground);
                     font-style: italic;
                 }
+
+                .token-summary {
+                    font-size: 12px;
+                    margin-top: 4px;
+                    color: var(--vscode-descriptionForeground);
+                }
             </style>
         </head>
         <body>
@@ -367,6 +388,7 @@ export class ConfigViewProvider implements vscode.WebviewViewProvider {
                 <select id="sourceBranch"><option>Loading...</option></select>
                 <span class="section-label">Review Instruction</span>
                 <textarea id="instruction" rows="3" placeholder="Enter instructions..."></textarea>
+                <div class="token-summary">Selected tokens: <span id="selectedTokens">0</span></div>
             </div>
 
             <details>
@@ -409,6 +431,7 @@ export class ConfigViewProvider implements vscode.WebviewViewProvider {
                     target: document.getElementById('targetBranch'),
                     source: document.getElementById('sourceBranch'),
                     instruction: document.getElementById('instruction'),
+                    selectedTokens: document.getElementById('selectedTokens'),
                     ignoreList: document.getElementById('ignoreList'),
                     diffList: document.getElementById('diffList'),
                     newIgnore: document.getElementById('newIgnore'),
@@ -422,7 +445,8 @@ export class ConfigViewProvider implements vscode.WebviewViewProvider {
                     sourceBranch: '',
                     instruction: '',
                     ignorePatterns: {},
-                    diffIgnorePatterns: {}
+                    diffIgnorePatterns: {},
+                    selectedTokens: 0
                 };
 
                 const prevState = vscode.getState();
@@ -528,7 +552,16 @@ export class ConfigViewProvider implements vscode.WebviewViewProvider {
                     if (state.targetBranch && els.target.innerHTML.includes(state.targetBranch)) els.target.value = state.targetBranch;
                     if (state.sourceBranch && els.source.innerHTML.includes(state.sourceBranch)) els.source.value = state.sourceBranch;
                     els.instruction.value = state.instruction;
+                    els.selectedTokens.textContent = formatTokens(state.selectedTokens);
                     renderLists();
+                }
+
+                function formatTokens(count) {
+                    if (count >= 1000) {
+                        const shortened = Math.round((count / 1000) * 10) / 10;
+                        return (shortened % 1 === 0 ? shortened.toFixed(0) : shortened) + 'K';
+                    }
+                    return String(count);
                 }
 
                 window.addEventListener('message', event => {
@@ -542,6 +575,10 @@ export class ConfigViewProvider implements vscode.WebviewViewProvider {
                     } else if (msg.type === 'setPatterns') {
                         state.ignorePatterns = msg.ignorePatterns || {};
                         state.diffIgnorePatterns = msg.diffIgnorePatterns || {};
+                        saveState();
+                        render();
+                    } else if (msg.type === 'selectionSummary') {
+                        state.selectedTokens = msg.totalTokens || 0;
                         saveState();
                         render();
                     }

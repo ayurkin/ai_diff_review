@@ -3,15 +3,19 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { ChangedFile } from '../types';
 import { isMatch } from '../utils/glob';
+import { TokenEstimator, formatTokens } from '../utils/tokenEstimator';
 
 export class ProjectTreeProvider implements vscode.TreeDataProvider<ProjectNode> {
     private _onDidChangeTreeData = new vscode.EventEmitter<ProjectNode | undefined | null | void>();
     readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
+    private _onDidUpdateSelection = new vscode.EventEmitter<void>();
+    readonly onDidUpdateSelection = this._onDidUpdateSelection.event;
 
     private changedFilesSet: Set<string> = new Set();
     private checkedFiles: Set<string> = new Set();
     
     private activeIgnorePatterns: string[] = [];
+    private tokenEstimator = new TokenEstimator();
 
     constructor(private workspaceRoot: string) {
         this.loadConfig();
@@ -63,6 +67,7 @@ export class ProjectTreeProvider implements vscode.TreeDataProvider<ProjectNode>
                 }
             }
             this.refresh();
+            this._onDidUpdateSelection.fire();
         });
     }
 
@@ -121,6 +126,7 @@ export class ProjectTreeProvider implements vscode.TreeDataProvider<ProjectNode>
         }
 
         this.refresh();
+        this._onDidUpdateSelection.fire();
     }
 
     private setFileCheckbox(node: ProjectFileNode, state: vscode.TreeItemCheckboxState): void {
@@ -159,14 +165,16 @@ export class ProjectTreeProvider implements vscode.TreeDataProvider<ProjectNode>
                 const isChangedFile = this.changedFilesSet.has(relativePath);
 
                 if (dirent.isDirectory()) {                    
-                    const state = await this.computeFolderCheckboxState(relativePath);
+                    const [state, tokenCount] = await this.computeFolderMetadata(relativePath);
                     nodes.push(new ProjectFolderNode(
                         dirent.name,
                         fullPath,
                         relativePath,
-                        state
+                        state,
+                        tokenCount
                     ));
                 } else {
+                    const tokenCount = await this.getFileTokenCount(relativePath);
                     let state: vscode.TreeItemCheckboxState | undefined;
                     
                     if (isChangedFile) {
@@ -182,7 +190,8 @@ export class ProjectTreeProvider implements vscode.TreeDataProvider<ProjectNode>
                         fullPath,
                         relativePath,
                         state,
-                        isChangedFile
+                        isChangedFile,
+                        tokenCount
                     ));
                 }
             }
@@ -199,18 +208,42 @@ export class ProjectTreeProvider implements vscode.TreeDataProvider<ProjectNode>
         }
     }
 
-    private async computeFolderCheckboxState(relativePath: string): Promise<vscode.TreeItemCheckboxState> {
+    private async computeFolderMetadata(relativePath: string): Promise<[vscode.TreeItemCheckboxState, number]> {
         const files = await this.walkDirectory(path.join(this.workspaceRoot, relativePath));
         const eligible = files.filter(f => !this.changedFilesSet.has(f));
 
         if (eligible.length === 0) {
-            return vscode.TreeItemCheckboxState.Unchecked;
+            return [vscode.TreeItemCheckboxState.Unchecked, 0];
         }
 
-        const checkedCount = eligible.filter(f => this.checkedFiles.has(f)).length;
-        return checkedCount === eligible.length
+        let tokenTotal = 0;
+        let checkedCount = 0;
+
+        for (const file of eligible) {
+            if (this.checkedFiles.has(file)) {
+                checkedCount += 1;
+            }
+            tokenTotal += await this.getFileTokenCount(file);
+        }
+
+        const state = checkedCount === eligible.length
             ? vscode.TreeItemCheckboxState.Checked
             : vscode.TreeItemCheckboxState.Unchecked;
+
+        return [state, tokenTotal];
+    }
+
+    private async getFileTokenCount(relativePath: string): Promise<number> {
+        const fsPath = path.join(this.workspaceRoot, relativePath);
+        return this.tokenEstimator.estimateFromFile(fsPath);
+    }
+
+    public async getSelectedTokenTotal(): Promise<number> {
+        let total = 0;
+        for (const file of this.checkedFiles) {
+            total += await this.getFileTokenCount(file);
+        }
+        return total;
     }
 }
 
@@ -226,9 +259,10 @@ export abstract class ProjectNode extends vscode.TreeItem {
 }
 
 export class ProjectFolderNode extends ProjectNode {
-    constructor(label: string, fullPath: string, relativePath: string, public checkboxState: vscode.TreeItemCheckboxState) {
+    constructor(label: string, fullPath: string, relativePath: string, public checkboxState: vscode.TreeItemCheckboxState, public tokenCount: number) {
         super(label, fullPath, relativePath, vscode.TreeItemCollapsibleState.Collapsed);
         this.iconPath = new vscode.ThemeIcon('folder');
+        this.description = formatTokens(tokenCount);
     }
 }
 
@@ -238,15 +272,19 @@ export class ProjectFileNode extends ProjectNode {
         fullPath: string,
         relativePath: string,
         public checkboxState: vscode.TreeItemCheckboxState | undefined,
-        isChangedFile: boolean
+        isChangedFile: boolean,
+        tokenCount: number
     ) {
         super(label, fullPath, relativePath, vscode.TreeItemCollapsibleState.None);
         this.iconPath = new vscode.ThemeIcon('file');
         this.tooltip = relativePath;
+        const tokenLabel = formatTokens(tokenCount);
         
         if (isChangedFile) {
-            this.description = '(In Changes)';
+            this.description = `(In Changes) · ${tokenLabel}`;
             this.contextValue = 'changedFile';
+        } else {
+            this.description = tokenLabel;
         }
     }
 }
