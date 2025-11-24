@@ -274,13 +274,35 @@ export class TreeViewProvider implements vscode.TreeDataProvider<TreeNode> {
         }
     }
 
-    async handleCheckboxChange(node: TreeNode, state: vscode.TreeItemCheckboxState): Promise<void> {
-        node.checkboxState = state;
-        if (node instanceof FileNode) {
-            this.checkedFiles.set(node.file.path, state);
-        } else if (node instanceof FolderNode) {
-            this.updateFolderChildren(node, state);
+    async handleCheckboxChanges(items: ReadonlyArray<[TreeNode, vscode.TreeItemCheckboxState]>): Promise<void> {
+        const fileItems: Array<[FileNode, vscode.TreeItemCheckboxState]> = [];
+        const folderItems: Array<[FolderNode, vscode.TreeItemCheckboxState]> = [];
+
+        for (const [item, state] of items) {
+            if (item instanceof FileNode) {
+                fileItems.push([item, state]);
+            } else if (item instanceof FolderNode) {
+                folderItems.push([item, state]);
+            }
         }
+
+        // Apply file-level changes first so parent updates don't cascade to unrelated files.
+        for (const [fileNode, state] of fileItems) {
+            fileNode.checkboxState = state;
+            this.checkedFiles.set(fileNode.file.path, state);
+        }
+
+        // Only cascade folder changes when the user toggled a folder directly;
+        // folder states also change when a child checkbox flips, and we avoid
+        // unchecking unrelated children in that case.
+        const shouldPropagateFolderState = fileItems.length === 0;
+        for (const [folderNode, state] of folderItems) {
+            folderNode.checkboxState = state;
+            if (shouldPropagateFolderState) {
+                this.updateFolderChildren(folderNode, state);
+            }
+        }
+
         this.refresh();
     }
 

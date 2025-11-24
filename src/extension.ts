@@ -72,11 +72,7 @@ export function activate(context: vscode.ExtensionContext) {
     if (treeView.onDidChangeCheckboxState) {
         context.subscriptions.push(
             treeView.onDidChangeCheckboxState(async (e) => {
-                for (const [item, state] of e.items) {
-                    if ('checkboxState' in item) {
-                        await treeViewProvider.handleCheckboxChange(item as any, state);
-                    }
-                }
+                await treeViewProvider.handleCheckboxChanges(e.items as any);
             })
         );
     }
